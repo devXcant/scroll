@@ -31,7 +31,11 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+atlas-credentials.env
+server/.env
+server/node_modules
 
 # typescript
 *.tsbuildinfo
