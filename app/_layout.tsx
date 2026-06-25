@@ -1,56 +1,103 @@
+import '@/global.css';
+import '@/lib/nativewind-interop';
+import {
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_600SemiBold,
+  SpaceGrotesk_700Bold,
+} from '@expo-google-fonts/space-grotesk';
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+} from '@expo-google-fonts/dm-sans';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import 'react-native-reanimated';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { StripeRoot } from '@/components/providers/StripeRoot';
+import { AppBootOverlay } from '@/components/ui/AppBootOverlay';
+import { useLockOnForeground } from '@/hooks/useLockOnForeground';
+import { useAppBootstrap } from '@/hooks/useAppBootstrap';
+import { useAppStore } from '@/stores/appStore';
+import {
+  configureNativeShieldUi,
+  subscribeShieldUnlockRequests,
+  syncNativeShieldWithScrollState,
+} from '@/services/nativeShield';
+import { configureNotifications } from '@/services/notifications';
 
-import { useColorScheme } from '@/components/useColorScheme';
+export { ErrorBoundary } from 'expo-router';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const router = useRouter();
+  useLockOnForeground();
+  useAppBootstrap();
+
   const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
+    DMSans_400Regular,
+    DMSans_500Medium,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
+    if (loaded) SplashScreen.hideAsync();
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
+  useEffect(() => {
+    if (process.env.EXPO_PUBLIC_FORCE_ONBOARDING === 'true') {
+      useAppStore.getState().resetToOnboarding();
+    }
+  }, []);
 
-  return <RootLayoutNav />;
-}
+  useEffect(() => {
+    configureNotifications();
+    configureNativeShieldUi();
+    const s = useAppStore.getState();
+    void syncNativeShieldWithScrollState({
+      shieldEnabled: s.shieldEnabled,
+      isLocked: s.lock.isLocked,
+      unlockExpiresAt: s.unlockExpiresAt,
+      apps: s.apps,
+      iosBlockedItems: s.iosBlockedItems,
+      triggeredByAppId: s.lock.triggeredByAppId,
+    });
+    const unsub = subscribeShieldUnlockRequests(() => {
+      const state = useAppStore.getState();
+      if (!state.onboardingComplete) {
+        router.replace('/onboarding');
+        return;
+      }
+      if (state.lock.isLocked && state.lock.triggeredByAppId) {
+        router.push(`/app/${state.lock.triggeredByAppId}`);
+      } else if (state.lock.isLocked) {
+        router.replace('/(tabs)');
+      } else {
+        router.push('/unlock/pay');
+      }
+    });
+    return () => unsub?.();
+  }, [router]);
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
+  // Stack must render on the first paint — returning null here breaks expo-router route context.
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <StripeRoot>
+      <StatusBar style="light" />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: '#000000' },
+        }}
+      />
+      {!loaded ? <AppBootOverlay /> : null}
+    </StripeRoot>
   );
 }
