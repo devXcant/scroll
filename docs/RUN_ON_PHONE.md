@@ -94,6 +94,37 @@ Open the install link on your iPhone. After install, run `pnpm start` on your Ma
 
 ---
 
+## Android without a Play developer account
+
+You do **not** need Google Play Console to test on your own phone.
+
+1. Enable Developer options + USB debugging (steps above).
+2. Plug in the phone, then:
+
+```bash
+pnpm android
+```
+
+or `npx expo run:android --device`. SCROLL installs directly. That is the Android equivalent of a local Xcode install, and it is enough until you ship.
+
+## Google Play Console (only for store / testers)
+
+When you want Internal testing or a Play Store listing:
+
+1. Open [Google Play Console](https://play.google.com/console) and pay the **one-time $25** registration.
+2. Create app `com.scroll.app`.
+3. Build an APK/AAB:
+
+```bash
+npx eas-cli build --profile development --platform android
+```
+
+4. Use **Internal testing** (up to 100 testers by email) or **Internal app sharing**. Testers install from the Play link, then open **SCROLL** and connect to Metro.
+
+You do not need Play Console for USB testing on your own device.
+
+---
+
 ## Quick reference
 
 | What | Command |

@@ -55,7 +55,7 @@ export function LockCountdown({
   return (
     <View
       className={cn(
-        'my-4 w-full items-center rounded-scroll-md border border-scroll-border bg-scroll-surface p-6',
+        'my-4 w-full items-center rounded-scroll-md border border-white/20 bg-white/10 p-6',
         compact && 'my-2 p-4',
       )}
     >

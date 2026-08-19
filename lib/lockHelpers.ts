@@ -1,11 +1,37 @@
+import { isInGracePeriod } from '@/lib/grace';
 import type { LockState, TrackedApp, UsageSnapshot } from '@/types';
+
+export function encodeAppParam(id: string): string {
+  return encodeURIComponent(id.replace(/\./g, '~'));
+}
+
+export function decodeAppParam(raw: string): string {
+  try {
+    return decodeURIComponent(raw).replace(/~/g, '.');
+  } catch {
+    return raw.replace(/~/g, '.');
+  }
+}
+
+export function findTrackedApp(apps: TrackedApp[], rawId: string | undefined): TrackedApp | undefined {
+  if (!rawId) return undefined;
+  const id = decodeAppParam(rawId);
+  return apps.find(
+    (a) => a.id === rawId || a.id === id || a.bundleId === rawId || a.bundleId === id
+  );
+}
 
 export function getLockedApps(
   apps: TrackedApp[],
   usage: UsageSnapshot[],
-  lock: LockState
+  lock: LockState,
+  grace?: { unlockExpiresAt?: string | null; graceAppId?: string | null }
 ): TrackedApp[] {
+  const graceOpen = isInGracePeriod(grace?.unlockExpiresAt ?? null);
   return apps.filter((app) => {
+    if (graceOpen && grace?.graceAppId && (app.id === grace.graceAppId || app.bundleId === grace.graceAppId)) {
+      return false;
+    }
     const used = usage.find((u) => u.appId === app.id)?.minutesUsed ?? 0;
     const atLimit = used >= app.dailyLimitMinutes;
     const sessionLocked = lock.isLocked && lock.triggeredByAppId === app.id;
@@ -45,7 +71,11 @@ export function isAppAtLimit(
 
 export function lockResolvePath(lock: LockState): string {
   if (lock.isLocked && lock.triggeredByAppId) {
-    return `/app/${lock.triggeredByAppId}`;
+    return appDetailPath(lock.triggeredByAppId);
   }
   return '/(tabs)';
+}
+
+export function appDetailPath(appId: string): string {
+  return `/app/${encodeAppParam(appId)}`;
 }

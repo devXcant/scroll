@@ -23,7 +23,7 @@ type Props = Omit<PressableProps, 'children'> & {
 
 const variantClassName: Record<Exclude<Variant, 'primary'>, string> = {
   secondary:
-    'min-h-[52px] w-full items-center justify-center overflow-hidden rounded-scroll-md border border-scroll-border bg-scroll-surface px-6 active:opacity-90 disabled:opacity-40',
+    'min-h-[52px] w-full items-center justify-center overflow-hidden rounded-scroll-md border border-white/20 bg-white/10 px-6 active:opacity-90 disabled:opacity-40',
   ghost:
     'min-h-[52px] w-full items-center justify-center overflow-hidden rounded-scroll-md bg-transparent px-4 active:opacity-90 disabled:opacity-40',
   danger:

@@ -10,7 +10,7 @@ import { LockCountdown } from '@/components/ui/LockCountdown';
 import { useAppStore } from '@/stores/appStore';
 import { getPersonalizedModules } from '@/services/personalization';
 import { getEffectiveInterests, getOnboardingCoachSummary } from '@/services/coachInterests';
-import { LEARN_REDUCE_SECONDS } from '@/constants/lock';
+import { LEARN_REDUCE_SECONDS, LEARN_UNLOCK_MINUTES } from '@/constants/lock';
 import { penalizeSillyAttempt } from '@/services/antiCheat';
 import type { LearnModule } from '@/types';
 import { useUnlockFlowGuard } from '@/hooks/useUnlockFlowGuard';
@@ -19,6 +19,7 @@ export default function LearnUnlockScreen() {
   const router = useRouter();
   useUnlockFlowGuard();
   const reduceLockTime = useAppStore((s) => s.reduceLockTime);
+  const unlock = useAppStore((s) => s.unlock);
   const lock = useAppStore((s) => s.lock);
   const lockEndsAt = useAppStore((s) => s.lockEndsAt);
   const lockMinEndsAt = useAppStore((s) => s.lockMinEndsAt);
@@ -46,9 +47,9 @@ export default function LearnUnlockScreen() {
     return (
       <GradientBackground>
         <SafeAreaView className="flex-1 p-6">
-          <Text className="text-scroll-text font-display text-[32px]">Pick a lesson</Text>
+          <Text className="text-scroll-text font-display text-[32px]">A short lesson</Text>
           <Text className="text-scroll-muted font-body mb-2">
-            Matched to your onboarding + coach inputs.
+            Matched to what you told Coach.
           </Text>
           {coachSummary ? (
             <Text className="text-scroll-dim font-body mb-4">Coach heard: {coachSummary}</Text>
@@ -62,7 +63,9 @@ export default function LearnUnlockScreen() {
                 <Text className="text-scroll-text font-display-semibold text-lg mt-1">
                   {m.title}
                 </Text>
-                <Text className="text-scroll-dim font-body mt-1">{m.durationMinutes} min</Text>
+                <Text className="text-scroll-muted font-body mt-2 leading-5">
+                  {m.slides[0]?.body ?? `${m.durationMinutes} min`}
+                </Text>
                 <Button
                   label="Start"
                   variant="secondary"
@@ -94,12 +97,9 @@ export default function LearnUnlockScreen() {
     if (isLast) {
       if (lock.isLocked) {
         reduceLockTime(LEARN_REDUCE_SECONDS);
-        router.replace(
-          lock.triggeredByAppId ? `/app/${lock.triggeredByAppId}` : '/(tabs)'
-        );
-      } else {
-        router.replace('/(tabs)');
+        unlock('learn', LEARN_UNLOCK_MINUTES, lock.triggeredByAppId ?? undefined);
       }
+      router.replace('/(tabs)');
       return;
     }
     if (lock.isLocked) reduceLockTime(LEARN_REDUCE_SECONDS);
@@ -138,7 +138,7 @@ export default function LearnUnlockScreen() {
 
         {slideReady ? (
           <Button
-            label={isLast ? 'Complete & return' : 'Next'}
+            label={isLast ? (lock.isLocked ? 'Complete & unlock' : 'Complete') : 'Next'}
             iconName="chevron-right"
             onPress={next}
           />

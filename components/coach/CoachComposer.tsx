@@ -1,5 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { ScrollIcon } from '@/components/ui/ScrollIcon';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import { colors } from '@/constants/theme';
 
 type Props = {
@@ -13,7 +14,7 @@ type Props = {
 export function CoachComposer({ value, onChange, onSend, loading, bottom }: Props) {
   return (
     <View style={[styles.shell, { bottom }]}>
-      <View style={styles.bar}>
+      <GlassSurface interactive intensity={70} style={styles.bar}>
         <View style={styles.row}>
           <TextInput
             style={styles.input}
@@ -35,7 +36,7 @@ export function CoachComposer({ value, onChange, onSend, loading, bottom }: Prop
             )}
           </Pressable>
         </View>
-      </View>
+      </GlassSurface>
     </View>
   );
 }
@@ -48,10 +49,6 @@ const styles = StyleSheet.create({
   },
   bar: {
     borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: colors.bg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
   row: {
     flexDirection: 'row',

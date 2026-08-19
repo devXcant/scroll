@@ -44,13 +44,13 @@ import { syncUsageFromDevice } from '@/services/usageSync';
 import { loadAppBlocker } from '@/lib/appBlocker';
 import {
   grantShieldAccess,
-  openScrollAppSettings,
   permissionBlockedReason,
 } from '@/services/devicePermissions';
 import {
   cancelScheduledNotification,
   notifyLockTimerFinished,
   notifyLockTriggered,
+  scheduleDailyCoachReminder,
   scheduleLockTimerNotification,
 } from '@/services/notifications';
 import {
@@ -60,6 +60,7 @@ import {
 import { buildWidgetSummary, syncWidgetData } from '@/services/widgetData';
 import { Alert, Platform } from 'react-native';
 import { generateDefaultDisplayName } from '@/lib/defaultDisplayName';
+import { trialEndsAt, type PlusPlan } from '@/constants/plus';
 
 async function applyNativeShieldFromStore(): Promise<void> {
   const s = useAppStore.getState();
@@ -108,6 +109,7 @@ type AppState = {
   activeCoachSessionId: string | null;
   userInterests: string[];
   unlockExpiresAt: string | null;
+  graceAppId: string | null;
   shieldEnabled: boolean;
   iosBlockedItems: IosBlockedItemSnapshot[];
   iosSelectionData: string;
@@ -119,6 +121,12 @@ type AppState = {
   selectedHistoryDate: string;
   signedInProfile: SignedInProfile | null;
   userDisplayName: string;
+  firstOpenDate: string | null;
+  inbox: { id: string; title: string; body: string; createdAt: string; read: boolean }[];
+  dailyCoachReminders: boolean;
+  plusPlan: PlusPlan;
+  plusExpiresAt: string | null;
+  plusTrialEndsAt: string | null;
 
   setOnboardingStep: (step: OnboardingStep) => void;
   setIosBlockSelection: (selectionData: string, items: IosBlockedItemSnapshot[]) => void;
@@ -178,6 +186,11 @@ type AppState = {
   ) => Promise<{ ok: boolean }>;
   hydrateSignedInProfile: (displayName: string, email: string | null) => void;
   setUserDisplayName: (name: string) => void;
+  addInboxItem: (title: string, body: string) => void;
+  markInboxRead: () => void;
+  setDailyCoachReminders: (on: boolean) => void;
+  activatePlus: (plan: Exclude<PlusPlan, null>, expiresAt: string | null) => void;
+  startFocusBoost: (minutes?: number) => { ok: boolean; reason?: string };
 };
 
 function sessionTitleFromMessage(text: string): string {
@@ -190,6 +203,10 @@ function migratePersistedState(persistedState: unknown): unknown {
   const obj = persistedState as Record<string, unknown>;
   if (Array.isArray(obj.apps)) {
     obj.apps = dedupeTrackedApps(obj.apps as TrackedApp[]);
+  }
+  if (obj.plusTrialEndsAt == null && obj.plusExpiresAt == null) {
+    obj.plusPlan = 'trial';
+    obj.plusTrialEndsAt = trialEndsAt();
   }
   if (!__DEV__) return obj;
   const apps = obj.apps;
@@ -252,6 +269,13 @@ export const useAppStore = create<AppState>()(
         selectedHistoryDate: todayKey(),
         signedInProfile: null,
         userDisplayName: '',
+        firstOpenDate: null,
+        inbox: [],
+        dailyCoachReminders: true,
+        graceAppId: null,
+        plusPlan: 'trial',
+        plusExpiresAt: null,
+        plusTrialEndsAt: trialEndsAt(),
         appLimitSetOn: {},
 
         setUnlockFlowActive: (active) => set({ unlockFlowActive: active }),
@@ -305,11 +329,10 @@ export const useAppStore = create<AppState>()(
           if (!trimmedEmail.includes('@')) {
             return { ok: false };
           }
-          const updated = await patchUserProfile(deviceId, {
+          await patchUserProfile(deviceId, {
             displayName: trimmedName,
             email: trimmedEmail,
           });
-          if (!updated) return { ok: false };
           set({
             signedInProfile: {
               displayName: trimmedName,
@@ -365,19 +388,21 @@ export const useAppStore = create<AppState>()(
           const normalized = phone.replace(/\D/g, '');
           const trimmedEmail = email.trim().toLowerCase();
           const trimmedName = (displayName ?? get().userDisplayName).trim() || generateDefaultDisplayName();
-          if (normalized.length < 10 || !trimmedEmail.includes('@')) return { ok: false };
+          const hasPhone = normalized.length >= 10;
+          const hasEmail = trimmedEmail.includes('@') && trimmedEmail.includes('.');
+          if (!hasPhone && !hasEmail) return { ok: false };
           await patchUserProfile(deviceId, {
             displayName: trimmedName,
-            email: trimmedEmail,
-            phone: normalized,
+            ...(hasEmail ? { email: trimmedEmail } : {}),
+            ...(hasPhone ? { phone: normalized } : {}),
           });
           set({
             userDisplayName: trimmedName,
             signedInProfile: {
               displayName: trimmedName,
-              email: trimmedEmail,
-              phone: normalized,
-              authProvider: 'phone',
+              ...(hasEmail ? { email: trimmedEmail } : {}),
+              ...(hasPhone ? { phone: normalized } : {}),
+              authProvider: hasPhone ? 'phone' : 'email',
               signedInAt: new Date().toISOString(),
             },
           });
@@ -404,6 +429,66 @@ export const useAppStore = create<AppState>()(
               patchUserProfile(deviceId, { displayName: trimmed })
             );
           }
+        },
+
+        addInboxItem: (title, body) =>
+          set((s) => ({
+            inbox: [
+              {
+                id: `in_${Date.now()}`,
+                title,
+                body,
+                createdAt: new Date().toISOString(),
+                read: false,
+              },
+              ...s.inbox,
+            ].slice(0, 40),
+          })),
+
+        markInboxRead: () =>
+          set((s) => ({
+            inbox: s.inbox.map((item) => ({ ...item, read: true })),
+          })),
+
+        setDailyCoachReminders: (on) => {
+          set({ dailyCoachReminders: on });
+          void scheduleDailyCoachReminder(on, get().userInterests[0]);
+        },
+
+        activatePlus: (plan, expiresAt) => {
+          set({
+            plusPlan: plan,
+            plusExpiresAt: plan === 'trial' ? null : expiresAt,
+            plusTrialEndsAt: plan === 'trial' ? expiresAt : get().plusTrialEndsAt,
+          });
+          get().addInboxItem(
+            'SCROLL Plus is on',
+            plan === 'trial'
+              ? 'Your trial is live. Track more apps and use quiet time.'
+              : 'Thanks for supporting SCROLL. Plus extras are unlocked.'
+          );
+        },
+
+        startFocusBoost: (minutes = 15) => {
+          const { apps, lock } = get();
+          if (lock.isLocked) {
+            return { ok: false, reason: 'Something is already locked.' };
+          }
+          if (apps.length === 0) {
+            return { ok: false, reason: 'Pick tracked apps first.' };
+          }
+          get().activateLock({
+            isLocked: true,
+            reason: 'manual_focus',
+            lockedAt: new Date().toISOString(),
+            triggeredByAppId: null,
+            triggeredCategory: null,
+            message: `Quiet time. Tracked apps pause for ${minutes} minutes.`,
+          });
+          const ends = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+          set({ lockEndsAt: ends, lockMinEndsAt: ends });
+          get().addInboxItem('Quiet time started', `Tracked apps pause for ${minutes} minutes.`);
+          return { ok: true };
         },
 
         loadScrollPointsBalance: async () => {
@@ -452,7 +537,8 @@ export const useAppStore = create<AppState>()(
           if (!lock.isLocked || !lockEndsAt) return;
           if (secondsUntil(lockEndsAt) > 0) return;
           void notifyLockTimerFinished(
-            appName ?? get().apps.find((a) => a.id === lock.triggeredByAppId)?.name ?? 'App'
+            appName ?? get().apps.find((a) => a.id === lock.triggeredByAppId)?.name ?? 'App',
+            lock.triggeredByAppId ?? undefined
           );
         },
 
@@ -461,8 +547,17 @@ export const useAppStore = create<AppState>()(
         setIosBlockSelection: (selectionData, items) =>
           set({ iosSelectionData: selectionData, iosBlockedItems: items }),
 
-        completeOnboarding: () =>
-          set({ onboardingComplete: true, onboardingStep: 'done' }),
+        completeOnboarding: () => {
+          set((s) => ({
+            onboardingComplete: true,
+            onboardingStep: 'done',
+            firstOpenDate: s.firstOpenDate ?? new Date().toISOString(),
+            plusTrialEndsAt: s.plusTrialEndsAt ?? trialEndsAt(),
+            plusPlan: s.plusPlan ?? 'trial',
+          }));
+          const s = get();
+          void scheduleDailyCoachReminder(s.dailyCoachReminders, s.userInterests[0]);
+        },
 
         setApps: (apps) => {
           const normalized =
@@ -517,9 +612,13 @@ export const useAppStore = create<AppState>()(
           });
           void applyNativeShieldFromStore();
           void applyWidgetSyncFromStore();
-          void notifyLockTriggered(appName);
+          get().addInboxItem(
+            `${appName} is locked`,
+            'Open SCROLL to read, learn, or pay for a short unlock.'
+          );
+          void notifyLockTriggered(appName, lock.triggeredByAppId ?? undefined);
           void cancelScheduledNotification(get().lockTimerNotificationId);
-          void scheduleLockTimerNotification(appName, lockEndsAt).then((id) =>
+          void scheduleLockTimerNotification(appName, lockEndsAt, lock.triggeredByAppId ?? undefined).then((id) =>
             set({ lockTimerNotificationId: id })
           );
         },
@@ -532,7 +631,7 @@ export const useAppStore = create<AppState>()(
           void applyWidgetSyncFromStore();
           const appName = apps.find((a) => a.id === lock.triggeredByAppId)?.name ?? 'App';
           void cancelScheduledNotification(lockTimerNotificationId);
-          void scheduleLockTimerNotification(appName, nextEnd).then((id) =>
+          void scheduleLockTimerNotification(appName, nextEnd, lock.triggeredByAppId ?? undefined).then((id) =>
             set({ lockTimerNotificationId: id })
           );
         },
@@ -548,13 +647,15 @@ export const useAppStore = create<AppState>()(
           void applyWidgetSyncFromStore();
           const appName = apps.find((a) => a.id === lock.triggeredByAppId)?.name ?? 'App';
           void cancelScheduledNotification(lockTimerNotificationId);
-          void scheduleLockTimerNotification(appName, nextEnd).then((id) =>
+          void scheduleLockTimerNotification(appName, nextEnd, lock.triggeredByAppId ?? undefined).then((id) =>
             set({ lockTimerNotificationId: id })
           );
         },
 
         evaluateLock: async () => {
-          const { apps, usage, unlockExpiresAt, lock, onboardingComplete } = get();
+          const { apps, usage, unlockExpiresAt, lock, onboardingComplete, unlockFlowActive } =
+            get();
+          if (unlockFlowActive) return;
           if (!onboardingComplete) {
             if (lock.isLocked) {
               void cancelScheduledNotification(get().lockTimerNotificationId);
@@ -593,6 +694,7 @@ export const useAppStore = create<AppState>()(
               lockMinEndsAt: null,
               lockTimerNotificationId: null,
             });
+            void applyNativeShieldFromStore();
             void applyWidgetSyncFromStore();
             return;
           }
@@ -620,10 +722,12 @@ export const useAppStore = create<AppState>()(
           if (method === 'read' || method === 'learn') {
             void get().recordAvoidedUnlock(299);
           }
+          const unlockedId = appId ?? get().lock.triggeredByAppId;
           const expires = new Date(Date.now() + minutes * 60 * 1000).toISOString();
           void cancelScheduledNotification(get().lockTimerNotificationId);
           set({
             unlockExpiresAt: expires,
+            graceAppId: unlockedId,
             lockEndsAt: null,
             lockMinEndsAt: null,
             lockTimerNotificationId: null,
@@ -638,6 +742,11 @@ export const useAppStore = create<AppState>()(
           });
           void applyNativeShieldFromStore();
           void applyWidgetSyncFromStore();
+          if (method === 'read') {
+            get().addInboxItem('You read today', 'A few pages. That is how the lock gets shorter.');
+          } else if (method === 'learn') {
+            get().addInboxItem('Lesson done', 'You chose a lesson over the feed.');
+          }
         },
 
         createCoachSession: (title, isOnboarding) => {
@@ -703,22 +812,37 @@ export const useAppStore = create<AppState>()(
         },
 
         tryUpdateAppLimit: (appId, minutes) => {
-          const { apps, appLimitSetOn } = get();
+          const { apps, appLimitSetOn, usage, lock } = get();
           const app = apps.find((a) => a.id === appId);
           if (!app) return { ok: false, reason: 'App not found' };
 
           const clamped = clampLimitMinutes(minutes);
-          const editedToday = !__DEV__ && appLimitSetOn[appId] === todayKey();
+          const editedToday = appLimitSetOn[appId] === todayKey();
+          const used = usage.find((u) => u.appId === appId)?.minutesUsed ?? 0;
+          const raising = clamped > app.dailyLimitMinutes;
+
+          if (raising && used >= app.dailyLimitMinutes) {
+            return {
+              ok: false,
+              reason: 'You already hit this limit today. Earn an unlock, or wait until midnight.',
+            };
+          }
+
+          if (raising && lock.isLocked && lock.triggeredByAppId === appId) {
+            return {
+              ok: false,
+              reason: 'This app is locked. Finish a read or lesson before changing the limit.',
+            };
+          }
 
           if (editedToday && clamped !== app.dailyLimitMinutes) {
             return {
               ok: false,
-              reason:
-                'You already set this app’s limit today. Limits reset at midnight.',
+              reason: 'You already changed this limit today. It unlocks again at midnight.',
             };
           }
 
-          if (!editedToday && clamped > app.dailyLimitMinutes) {
+          if (!editedToday && raising) {
             return { ok: false, needsConfirm: true };
           }
 
@@ -739,6 +863,21 @@ export const useAppStore = create<AppState>()(
         },
 
         confirmAppLimitIncrease: (appId, minutes) => {
+          const { apps, usage, lock } = get();
+          const app = apps.find((a) => a.id === appId);
+          if (!app) return;
+          const used = usage.find((u) => u.appId === appId)?.minutesUsed ?? 0;
+          if (minutes > app.dailyLimitMinutes && used >= app.dailyLimitMinutes) {
+            Alert.alert(
+              'Limit',
+              'You already hit this limit today. Earn an unlock, or wait until midnight.'
+            );
+            return;
+          }
+          if (lock.isLocked && lock.triggeredByAppId === appId && minutes > app.dailyLimitMinutes) {
+            Alert.alert('Limit', 'This app is locked. Finish a read or lesson first.');
+            return;
+          }
           get().updateAppLimit(appId, minutes);
         },
 
@@ -760,16 +899,6 @@ export const useAppStore = create<AppState>()(
           }
 
           if (!granted) {
-            Alert.alert(
-              'Permission needed',
-              Platform.OS === 'ios'
-                ? 'Allow Screen Time access so SCROLL can shield the apps you pick.'
-                : 'Allow Usage access and Display over other apps so SCROLL can block apps when you hit a limit.',
-              [
-                { text: 'Open settings', onPress: () => void openScrollAppSettings() },
-                { text: 'Cancel', style: 'cancel' },
-              ]
-            );
             return false;
           }
 
@@ -789,6 +918,11 @@ export const useAppStore = create<AppState>()(
         recordPaymentUnlock: async (feeCents, investedCents) => {
           const portfolio = await recordContribution(feeCents, investedCents);
           set({ portfolio });
+          const dollars = (feeCents / 100).toFixed(2);
+          get().addInboxItem(
+            `$${dollars} added to your vault`,
+            'Held from a pay unlock on this device.'
+          );
         },
 
         recordAvoidedUnlock: async (feeCents) => {
@@ -828,13 +962,42 @@ export const useAppStore = create<AppState>()(
     },
     {
       name: 'scroll-app-v3',
-      version: 6,
+      version: 9,
       migrate: (persistedState) => migratePersistedState(persistedState),
       storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        if (state.onboardingComplete && !state.firstOpenDate) {
+          useAppStore.setState({ firstOpenDate: new Date().toISOString() });
+        }
+        if (state.onboardingComplete && !state.plusTrialEndsAt && !state.plusExpiresAt) {
+          useAppStore.setState({ plusTrialEndsAt: trialEndsAt(), plusPlan: 'trial' });
+        }
+        if (state.onboardingComplete) {
+          void scheduleDailyCoachReminder(state.dailyCoachReminders, state.userInterests[0]);
+        }
+        void applyNativeShieldFromStore();
+        void applyWidgetSyncFromStore();
+        if (state.lock.isLocked && state.lockEndsAt) {
+          const appName =
+            state.apps.find((a) => a.id === state.lock.triggeredByAppId)?.name ?? 'App';
+          void scheduleLockTimerNotification(
+            appName,
+            state.lockEndsAt,
+            state.lock.triggeredByAppId ?? undefined
+          ).then((id) => useAppStore.setState({ lockTimerNotificationId: id }));
+        }
+      },
       partialize: (s) => ({
         onboardingComplete: s.onboardingComplete,
         onboardingStep: s.onboardingStep,
         apps: s.apps,
+        usage: s.usage,
+        lock: s.lock,
+        lockEndsAt: s.lockEndsAt,
+        lockMinEndsAt: s.lockMinEndsAt,
+        unlockExpiresAt: s.unlockExpiresAt,
+        graceAppId: s.graceAppId,
         coachSessions: s.coachSessions.slice(0, 40),
         userInterests: s.userInterests,
         shieldEnabled: s.shieldEnabled,
@@ -846,6 +1009,12 @@ export const useAppStore = create<AppState>()(
         selectedHistoryDate: s.selectedHistoryDate,
         signedInProfile: s.signedInProfile,
         userDisplayName: s.userDisplayName,
+        firstOpenDate: s.firstOpenDate,
+        inbox: s.inbox.slice(0, 40),
+        dailyCoachReminders: s.dailyCoachReminders,
+        plusPlan: s.plusPlan,
+        plusExpiresAt: s.plusExpiresAt,
+        plusTrialEndsAt: s.plusTrialEndsAt,
       }),
     }
   )

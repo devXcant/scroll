@@ -27,6 +27,16 @@ class AppBlockerDeviceActivityMonitor: DeviceActivityMonitor {
   override func intervalDidStart(for activity: DeviceActivityName) {
     super.intervalDidStart(for: activity)
   }
+  override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {
+    super.eventDidReachThreshold(event, activity: activity)
+    var hits = sharedDefaults?.array(forKey: "scroll.limitHits.v1") as? [[String: Any]] ?? []
+    hits.append([
+      "appId": event.rawValue,
+      "at": ISO8601DateFormatter().string(from: Date())
+    ])
+    sharedDefaults?.set(hits, forKey: "scroll.limitHits.v1")
+    reapplyBlockConfiguration()
+  }
 
   private func reapplyBlockConfiguration() {
     let userDefaults = sharedDefaults ?? UserDefaults.standard

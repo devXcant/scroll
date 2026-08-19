@@ -1,16 +1,12 @@
 type SendResult = { ok: true } | { ok: false; error: string };
 
 export async function sendSms(to: string, body: string): Promise<SendResult> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_PHONE_NUMBER;
+  const sid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const token = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const from = process.env.TWILIO_PHONE_NUMBER?.trim();
 
   if (!sid || !token || !from) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[sms] (dev, no Twilio) To ${to}: ${body}`);
-      return { ok: true };
-    }
-    return { ok: false, error: 'SMS provider not configured on server.' };
+    return { ok: false, error: 'Texting is not set up yet. Use email instead.' };
   }
 
   try {
@@ -29,10 +25,12 @@ export async function sendSms(to: string, body: string): Promise<SendResult> {
 
     if (!res.ok) {
       const text = await res.text();
-      return { ok: false, error: text || 'Twilio send failed' };
+      console.warn('[sms] send failed', res.status, text.slice(0, 300));
+      return { ok: false, error: 'We could not text that number. Check it and try again, or use email.' };
     }
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'SMS send failed' };
+    console.warn('[sms] send failed', e instanceof Error ? e.message : e);
+    return { ok: false, error: 'We could not text that number. Check your connection and try again.' };
   }
 }

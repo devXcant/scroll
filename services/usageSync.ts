@@ -1,8 +1,16 @@
 import { AppState, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { TrackedApp, UsageSnapshot } from '@/types';
 import { screenTimeLogic } from '@/services/screenTime';
 import { isExpoGo } from '@/lib/expoGo';
-import { loadAppBlocker } from '@/lib/appBlocker';
+import { loadAppBlocker, type AppBlockerModule } from '@/lib/appBlocker';
+
+const USAGE_KEY = '@scroll/usage';
+
+async function persistUsage(usage: UsageSnapshot[]): Promise<UsageSnapshot[]> {
+  await AsyncStorage.setItem(USAGE_KEY, JSON.stringify(usage));
+  return usage;
+}
 
 async function fetchAndroidUsageMinutes(
   packageNames: string[]
@@ -17,7 +25,40 @@ async function fetchAndroidUsageMinutes(
   }
 }
 
-/** Pull today’s foreground minutes from the OS (Android) or stored mock (iOS). */
+async function fetchIosLimitHits(
+  apps: TrackedApp[]
+): Promise<UsageSnapshot[] | null> {
+  if (isExpoGo() || Platform.OS !== 'ios') return null;
+  const mod = loadAppBlocker();
+  if (!mod?.getLimitHits) return null;
+  let hits: { appId: string; at?: string }[] = [];
+  try {
+    hits = mod.getLimitHits() ?? [];
+  } catch {
+    return null;
+  }
+  if (hits.length === 0) return null;
+
+  const existing = await screenTimeLogic.getUsage();
+  const now = new Date().toISOString();
+  const byApp = new Map<string, number>();
+  for (const hit of hits) {
+    const app = apps.find((a) => a.id === hit.appId);
+    if (!app) continue;
+    byApp.set(app.id, Math.max(byApp.get(app.id) ?? 0, app.dailyLimitMinutes));
+  }
+  if (byApp.size === 0) return null;
+
+  return apps.map((app) => {
+    const prev = existing.find((u) => u.appId === app.id);
+    return {
+      appId: app.id,
+      minutesUsed: Math.max(prev?.minutesUsed ?? 0, byApp.get(app.id) ?? 0),
+      lastUpdated: now,
+    };
+  });
+}
+
 export async function syncUsageFromDevice(apps: TrackedApp[]): Promise<UsageSnapshot[]> {
   if (Platform.OS === 'android' && apps.length > 0 && !isExpoGo()) {
     const byPackage = await fetchAndroidUsageMinutes(apps.map((a) => a.bundleId));
@@ -26,14 +67,47 @@ export async function syncUsageFromDevice(apps: TrackedApp[]): Promise<UsageSnap
       minutesUsed: Math.max(0, Math.floor(byPackage[app.bundleId] ?? 0)),
       lastUpdated: new Date().toISOString(),
     }));
-    const raw = JSON.stringify(usage);
-    const { default: AsyncStorage } = await import(
-      '@react-native-async-storage/async-storage'
-    );
-    await AsyncStorage.setItem('@scroll/usage', raw);
-    return usage;
+    return persistUsage(usage);
   }
+
+  const iosHits = await fetchIosLimitHits(apps);
+  if (iosHits) return persistUsage(iosHits);
+
   return screenTimeLogic.getUsage();
+}
+
+export async function startIosLimitMonitoring(
+  apps: TrackedApp[],
+  items: { type: string; token: string; bundleIdentifier?: string; displayName?: string }[]
+): Promise<void> {
+  if (isExpoGo() || Platform.OS !== 'ios') return;
+  const mod = loadAppBlocker() as AppBlockerModule | null;
+  if (!mod?.startDailyLimitMonitoring) return;
+
+  const limits = items.flatMap((item) => {
+    if (item.type !== 'app' && item.type !== 'category') return [];
+    const app = apps.find(
+      (a) =>
+        (item.bundleIdentifier && a.bundleId === item.bundleIdentifier) ||
+        (item.displayName && a.name === item.displayName) ||
+        (item.type === 'category' && a.id.startsWith('cat_') && a.bundleId === item.token)
+    );
+    if (!app || !item.token) return [];
+    return [
+      {
+        appId: app.id,
+        token: item.token,
+        minutes: Math.max(1, app.dailyLimitMinutes),
+        type: item.type,
+      },
+    ];
+  });
+
+  try {
+    await mod.startDailyLimitMonitoring(limits);
+  } catch {
+    /* native module may be unpatched until rebuild */
+  }
 }
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;

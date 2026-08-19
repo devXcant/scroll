@@ -4,3 +4,4 @@ import { spacing } from '@/constants/theme';
 export const SCREEN_PAD = spacing.md;
 
 export const TAB_BAR_HEIGHT = 88;
+export const TAB_SCROLL_PAD = 148;

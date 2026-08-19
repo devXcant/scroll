@@ -1,40 +1,71 @@
 import { getApiBaseUrl } from '@/lib/apiUrl';
 
-const API_BASE = getApiBaseUrl();
+function digits(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+function isValidEmail(email: string): boolean {
+  const value = email.trim().toLowerCase();
+  return value.includes('@') && value.includes('.');
+}
+
+function isValidPhone(phone: string): boolean {
+  return digits(phone).length >= 10;
+}
+
+function contactKeys(phone: string, email: string): { phone: string; email: string } {
+  const normalized = digits(phone);
+  const trimmedEmail = email.trim().toLowerCase();
+  return {
+    phone: isValidPhone(normalized) ? normalized : '',
+    email: isValidEmail(trimmedEmail) ? trimmedEmail : '',
+  };
+}
 
 export async function sendPhoneOtp(
   phone: string,
   email: string
-): Promise<{ ok: boolean; error?: string }> {
-  const normalized = phone.replace(/\D/g, '');
-  const trimmedEmail = email.trim().toLowerCase();
-  if (normalized.length < 10) {
-    return { ok: false, error: 'Enter a valid phone number.' };
-  }
-  if (!trimmedEmail.includes('@')) {
-    return { ok: false, error: 'Enter a valid email address.' };
+): Promise<{
+  ok: boolean;
+  error?: string;
+  emailed?: boolean;
+  texted?: boolean;
+}> {
+  const keys = contactKeys(phone, email);
+  const typedPhone = phone.replace(/\D/g, '').length > 0;
+  const typedEmail = email.trim().length > 0;
+
+  if (!keys.phone && !keys.email) {
+    if (typedEmail) return { ok: false, error: 'That email does not look right.' };
+    if (typedPhone) return { ok: false, error: 'That phone number looks too short.' };
+    return { ok: false, error: 'Add an email or a phone number so we can send your code.' };
   }
 
-  if (!API_BASE) {
-    return {
-      ok: false,
-      error: 'Server not configured. Set EXPO_PUBLIC_API_URL and run pnpm run api.',
-    };
+  const apiBase = getApiBaseUrl();
+  if (!apiBase) {
+    return { ok: false, error: 'We could not send a code. Check your connection and try again.' };
   }
 
   try {
-    const res = await fetch(`${API_BASE}/auth/otp/send`, {
+    const res = await fetch(`${apiBase}/auth/otp/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: normalized, email: trimmedEmail }),
+      body: JSON.stringify({ phone: keys.phone, email: keys.email }),
     });
-    if (!res.ok) {
-      const data = (await res.json()) as { error?: string };
-      return { ok: false, error: data.error ?? 'Could not send code.' };
+    const data = (await res.json()) as {
+      error?: string;
+      emailed?: boolean;
+      texted?: boolean;
+    };
+    if (!res.ok || (!data.emailed && !data.texted)) {
+      return {
+        ok: false,
+        error: data.error ?? 'We could not send a code. Try email or phone again.',
+      };
     }
-    return { ok: true };
+    return { ok: true, emailed: Boolean(data.emailed), texted: Boolean(data.texted) };
   } catch {
-    return { ok: false, error: 'Network error sending code.' };
+    return { ok: false, error: 'We could not send a code. Check your connection and try again.' };
   }
 }
 
@@ -43,28 +74,26 @@ export async function verifyPhoneOtp(
   email: string,
   code: string
 ): Promise<{ ok: boolean; error?: string }> {
-  const normalized = phone.replace(/\D/g, '');
-  const trimmedEmail = email.trim().toLowerCase();
-  if (code.length < 4) {
-    return { ok: false, error: 'Enter the code from your email.' };
+  const trimmedCode = code.trim();
+  if (trimmedCode.length < 4) {
+    return { ok: false, error: 'Enter the 6 digit code we sent you.' };
   }
 
-  if (!API_BASE) {
-    return { ok: false, error: 'Server not configured.' };
+  const apiBase = getApiBaseUrl();
+  if (!apiBase) {
+    return { ok: false, error: 'We could not check that code. Check your connection and try again.' };
   }
 
+  const keys = contactKeys(phone, email);
   try {
-    const res = await fetch(`${API_BASE}/auth/otp/verify`, {
+    const res = await fetch(`${apiBase}/auth/otp/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: normalized, email: trimmedEmail, code }),
+      body: JSON.stringify({ phone: keys.phone, email: keys.email, code: trimmedCode }),
     });
-    if (!res.ok) {
-      const data = (await res.json()) as { error?: string };
-      return { ok: false, error: data.error ?? 'Invalid code.' };
-    }
-    return { ok: true };
+    if (res.ok) return { ok: true };
+    return { ok: false, error: 'That code is not right. Try again or resend a new one.' };
   } catch {
-    return { ok: false, error: 'Network error verifying code.' };
+    return { ok: false, error: 'We could not check that code. Check your connection and try again.' };
   }
 }

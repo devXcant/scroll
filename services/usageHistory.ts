@@ -40,6 +40,20 @@ export function lastNDays(n: number, from = new Date()): string[] {
   return keys;
 }
 
+export function daysFromStart(startIso: string | null | undefined, maxDays = 7): string[] {
+  const today = dateKey();
+  if (!startIso) return [today];
+  const start = dateKey(new Date(startIso));
+  const startMs = new Date(`${start}T12:00:00`).getTime();
+  const todayMs = new Date(`${today}T12:00:00`).getTime();
+  if (Number.isNaN(startMs) || startMs > todayMs) return [today];
+  const keys: string[] = [];
+  for (let ms = startMs; ms <= todayMs; ms += 86400000) {
+    keys.push(dateKey(new Date(ms)));
+  }
+  return keys.slice(-maxDays);
+}
+
 export function formatDayLabel(key: string): string {
   const d = new Date(`${key}T12:00:00`);
   const today = dateKey();

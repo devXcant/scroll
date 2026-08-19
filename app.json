@@ -19,6 +19,8 @@
     },
     "android": {
       "package": "com.scroll.app",
+      "usesCleartextTraffic": true,
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.PACKAGE_USAGE_STATS"
       ],

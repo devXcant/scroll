@@ -155,15 +155,14 @@ export async function refreshDiscoveredApps(): Promise<TrackedApp[]> {
 }
 
 export async function getSelectableApps(): Promise<TrackedApp[]> {
-  if (Platform.OS === 'android') {
-    return refreshDiscoveredApps();
-  }
-
   const cached = await AsyncStorage.getItem(CACHE_KEY);
   if (cached) {
     try {
       const parsed = JSON.parse(cached) as TrackedApp[];
-      if (parsed.length > 0) return parsed;
+      if (parsed.length > 0) {
+        void refreshDiscoveredApps();
+        return parsed;
+      }
     } catch {
       /* refresh */
     }

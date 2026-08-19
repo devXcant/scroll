@@ -10,22 +10,22 @@ import {
   DMSans_500Medium,
 } from '@expo-google-fonts/dm-sans';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StripeRoot } from '@/components/providers/StripeRoot';
 import { AppBootOverlay } from '@/components/ui/AppBootOverlay';
 import { useLockOnForeground } from '@/hooks/useLockOnForeground';
 import { useAppBootstrap } from '@/hooks/useAppBootstrap';
 import { useAppStore } from '@/stores/appStore';
+import { appDetailPath } from '@/lib/lockHelpers';
 import {
   configureNativeShieldUi,
   subscribeShieldUnlockRequests,
   syncNativeShieldWithScrollState,
 } from '@/services/nativeShield';
-import { configureNotifications } from '@/services/notifications';
+import { configureNotifications, subscribeNotificationResponses } from '@/services/notifications';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -77,14 +77,20 @@ export default function RootLayout() {
         return;
       }
       if (state.lock.isLocked && state.lock.triggeredByAppId) {
-        router.push(`/app/${state.lock.triggeredByAppId}`);
+        router.push(appDetailPath(state.lock.triggeredByAppId) as Href);
       } else if (state.lock.isLocked) {
         router.replace('/(tabs)');
       } else {
         router.push('/unlock/pay');
       }
     });
-    return () => unsub?.();
+    const unsubNotes = subscribeNotificationResponses((url) => {
+      router.push(url as Href);
+    });
+    return () => {
+      unsub?.();
+      unsubNotes();
+    };
   }, [router]);
 
   // Stack must render on the first paint — returning null here breaks expo-router route context.

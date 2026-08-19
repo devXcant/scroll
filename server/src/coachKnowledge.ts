@@ -16,8 +16,8 @@ Coach: you. Personalized reading and lessons from user interests.
 Profile: account, display name, permissions, sign in, delete account.
 
 Unlock paths (best to worst):
-Read: timed pages from personalized books. Each page earns 1 point and shaves 90 seconds off the lock timer.
-Learn: short slide lessons. Each slide shaves 60 seconds off the lock timer.
+Read: timed pages from personalized books. Each page earns 1 point and shaves 90 seconds off the lock timer. Finishing the full reading session grants 15 minutes of app access.
+Learn: short slide lessons. Each slide shaves 60 seconds off the lock timer. Completing a lesson grants 15 minutes of app access.
 Points: 60 points removes 90 seconds from the lock. Grace unlock costs 180 points for 15 minutes of app access.
 Pay: Stripe grace unlock. Last resort. Fee gets more expensive if used repeatedly the same day.
 
@@ -36,7 +36,7 @@ Android: usage stats plus overlay blocking.
 Simulator can pick categories but cannot enforce real shields.
 
 Auth:
-Email plus phone sign up. OTP sent to email via Resend. Google and Apple sign in on supported builds.
+Email plus phone sign up. OTP is emailed via Resend. If Twilio is configured the same code is also texted. Google and Apple sign in on supported builds.
 
 Other:
 Push notifications for lock events and timer finished (dev build, not Expo Go).

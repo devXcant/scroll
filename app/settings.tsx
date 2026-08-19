@@ -5,9 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
-import { LimitRow, limitHintText } from '@/components/settings/LimitRow';
+import { LimitRow } from '@/components/settings/LimitRow';
 import { useAppStore } from '@/stores/appStore';
-import { MAX_APP_LIMIT_MINUTES } from '@/types';
 import { screenTimeLogic } from '@/services/screenTime';
 
 export default function SettingsScreen() {
@@ -84,10 +83,7 @@ export default function SettingsScreen() {
 
           <GlassCard className="mb-6">
             <Text className="text-scroll-text font-display-semibold mb-2">
-              Per-app limits (max {MAX_APP_LIMIT_MINUTES}m / day)
-            </Text>
-            <Text className="text-scroll-dim font-body text-xs leading-[18px] mb-4">
-              {limitHintText()}
+              Daily limits
             </Text>
             {apps.map((app) => (
               <LimitRow

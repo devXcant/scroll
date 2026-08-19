@@ -23,7 +23,7 @@ export function AppUsageRow({ app, usage, inGrace, sessionLocked, onPress }: Pro
     <>
       <View
         className={cn(
-          'h-11 w-11 items-center justify-center rounded-scroll-sm border border-scroll-border bg-scroll-surface',
+          'h-11 w-11 items-center justify-center rounded-scroll-sm border border-white/20 bg-white/10',
           showLocked && 'border-scroll-lock bg-scroll-lock/10',
           showGrace && 'border-scroll-accent bg-scroll-success/10',
         )}
@@ -34,9 +34,9 @@ export function AppUsageRow({ app, usage, inGrace, sessionLocked, onPress }: Pro
         <Text className="text-base font-bold text-scroll-text">{app.name}</Text>
         <Text className="mt-0.5 font-body text-xs text-scroll-muted">
           {used}m used ·{' '}
-          {showGrace ? 'grace access' : over ? 'limit reached' : `${remaining}m left`} (cap {limit}m)
+          {showGrace ? 'open now' : over ? 'limit reached' : `${remaining}m left`} (cap {limit}m)
         </Text>
-        <View className="mt-2 h-1 overflow-hidden rounded-sm bg-scroll-surface">
+        <View className="mt-2 h-1 overflow-hidden rounded-sm bg-white/10">
           <View
             className={cn(
               'h-full rounded-sm bg-scroll-dim',
@@ -51,7 +51,7 @@ export function AppUsageRow({ app, usage, inGrace, sessionLocked, onPress }: Pro
         <Text className="text-[10px] font-extrabold tracking-wider text-scroll-lock">LOCKED</Text>
       ) : null}
       {showGrace ? (
-        <Text className="text-[10px] font-extrabold tracking-wider text-scroll-accent">GRACE</Text>
+        <Text className="text-[10px] font-extrabold tracking-wider text-scroll-accent">OPEN</Text>
       ) : null}
     </>
   );

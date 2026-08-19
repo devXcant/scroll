@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { ScrollIcon, type ScrollIconName } from '@/components/ui/ScrollIcon';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import { colors } from '@/constants/theme';
 
 type Props = {
@@ -8,6 +9,7 @@ type Props = {
   size?: number;
   color?: string;
   accessibilityLabel?: string;
+  glow?: boolean;
 };
 
 export function GlassIconButton({
@@ -16,6 +18,7 @@ export function GlassIconButton({
   size = 20,
   color = colors.text,
   accessibilityLabel,
+  glow,
 }: Props) {
   return (
     <Pressable
@@ -23,9 +26,9 @@ export function GlassIconButton({
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       style={({ pressed }) => [styles.hit, pressed && styles.pressed]}>
-      <View style={styles.shell}>
+      <GlassSurface glow={glow} interactive style={styles.shell}>
         <ScrollIcon name={icon} size={size} color={color} />
-      </View>
+      </GlassSurface>
     </Pressable>
   );
 }
@@ -44,11 +47,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.bg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
 });

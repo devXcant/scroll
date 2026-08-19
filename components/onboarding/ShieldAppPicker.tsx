@@ -94,9 +94,6 @@ export function ShieldAppPicker({ selected, onChange }: Props) {
 
   return (
     <View className="flex-1">
-      <Text className="mb-4 font-body text-sm leading-5 text-scroll-muted">
-        Choose apps SCROLL blocks when you go over your daily limits.
-      </Text>
       <AppPicker selected={selected} onChange={onChange} />
     </View>
   );

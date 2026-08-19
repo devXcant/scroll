@@ -61,7 +61,7 @@ export async function createUnlockPayment(
     return payUnlockWithStripe(tier);
   }
 
-  if (__DEV__ || isExpoGo()) {
+  if (isExpoGo()) {
     await recordDevEscalation();
     const invested = Math.round(tier.amountCents * 0.8);
     const platform = tier.amountCents - invested;

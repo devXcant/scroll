@@ -20,3 +20,16 @@ export async function getOrCreateDeviceUserId(): Promise<string> {
   }
   return id;
 }
+
+export async function clearDeviceUserId(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(USER_ID_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await AsyncStorage.removeItem(USER_ID_KEY);
+  } catch {
+    /* ignore */
+  }
+}

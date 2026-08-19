@@ -211,9 +211,5 @@ export async function payUnlockWithStripe(tier: PaymentTier): Promise<PaymentRes
 }
 
 export function isStripeConfigured(): boolean {
-  return Boolean(
-    process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY &&
-      process.env.EXPO_PUBLIC_API_URL &&
-      isStripeNativeAvailable()
-  );
+  return Boolean(process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY && isStripeNativeAvailable());
 }

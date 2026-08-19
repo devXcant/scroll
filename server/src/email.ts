@@ -1,15 +1,24 @@
 type SendResult = { ok: true } | { ok: false; error: string };
 
+function userEmailError(status: number, body: string): string {
+  if (status === 403) {
+    return 'We could not email that address. Check it and try again.';
+  }
+  if (status === 422) {
+    return 'That email address was rejected. Check it and try again.';
+  }
+  if (body.toLowerCase().includes('invalid')) {
+    return 'That email address was rejected. Check it and try again.';
+  }
+  return 'We could not send a code to that email. Try again in a moment.';
+}
+
 export async function sendOtpEmail(to: string, code: string): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY?.trim();
   const from = process.env.RESEND_FROM?.trim() ?? 'SCROLL <onboarding@resend.dev>';
 
   if (!key) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[email] (dev, no Resend) To ${to}: code ${code}`);
-      return { ok: true };
-    }
-    return { ok: false, error: 'Email provider not configured (RESEND_API_KEY).' };
+    return { ok: false, error: 'Email sending is not set up yet. Use a phone number, or add an email provider.' };
   }
 
   try {
@@ -36,10 +45,12 @@ export async function sendOtpEmail(to: string, code: string): Promise<SendResult
 
     if (!res.ok) {
       const text = await res.text();
-      return { ok: false, error: text || 'Resend send failed' };
+      console.warn('[email] send failed', res.status, text.slice(0, 300));
+      return { ok: false, error: userEmailError(res.status, text) };
     }
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Email send failed' };
+    console.warn('[email] send failed', e instanceof Error ? e.message : e);
+    return { ok: false, error: 'We could not send a code to that email. Check your connection and try again.' };
   }
 }

@@ -1,11 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import * as Haptics from 'expo-haptics';
 import { MotiView } from 'moti';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { colors } from '@/constants/theme';
 import { ScrollIcon, type ScrollIconName } from '@/components/ui/ScrollIcon';
+import { useChromeUi } from '@/stores/chromeUi';
 
 const TAB_ICONS: Record<string, ScrollIconName> = {
   index: 'home',
@@ -46,7 +47,7 @@ function TabItem({ label, iconName, focused, onPress }: TabItemProps) {
           animate={{ translateY: focused ? -2 : 0 }}
           transition={{ type: 'spring', damping: 14, stiffness: 280, mass: 0.7 }}
           style={[styles.iconShell, focused && styles.iconShellActive]}>
-          <ScrollIcon name={iconName} size={24} strokeWidth={2.4} color={focused ? colors.accent : colors.textDim} />
+          <ScrollIcon name={iconName} size={22} strokeWidth={2.4} color={focused ? colors.accent : colors.textDim} />
         </MotiView>
         <Text style={[styles.label, focused && styles.labelActive]}>{label}</Text>
       </Animated.View>
@@ -54,14 +55,37 @@ function TabItem({ label, iconName, focused, onPress }: TabItemProps) {
   );
 }
 
-export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+type GlassTabBarProps = {
+  state: {
+    index: number;
+    routes: Array<{ key: string; name: string; params?: object }>;
+  };
+  descriptors: Record<string, { options: { tabBarLabel?: unknown; title?: string } }>;
+  navigation: {
+    emit: (event: {
+      type: 'tabPress';
+      target: string;
+      canPreventDefault: true;
+    }) => { defaultPrevented: boolean };
+    navigate: (name: string, params?: object) => void;
+  };
+};
+
+export function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 8);
+  const hidden = useChromeUi((s) => s.hidden);
+  const setHidden = useChromeUi((s) => s.setHidden);
 
   return (
     <View pointerEvents="box-none" style={[styles.shell, { paddingBottom: bottomPad }]}>
-      <View style={styles.floatWrap}>
+      <MotiView
+        pointerEvents={hidden ? 'none' : 'box-none'}
+        animate={{ translateY: hidden ? 110 : 0, opacity: hidden ? 0 : 1 }}
+        transition={{ type: 'timing', duration: 220 }}
+        style={styles.floatWrap}>
         <View style={styles.bar}>
+          <GlassSurface intensity={64} style={[StyleSheet.absoluteFillObject, { borderRadius: 26 }]} />
           {state.routes.map((route, index) => {
             const { options } = descriptors[route.key];
             const label =
@@ -69,10 +93,12 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
                 ? String(options.tabBarLabel)
                 : options.title ?? route.name;
             const focused = state.index === index;
+            if (route.name === 'grow') return null;
             const iconName = TAB_ICONS[route.name] ?? 'home';
 
             const onPress = () => {
               void Haptics.selectionAsync();
+              setHidden(false);
               const event = navigation.emit({
                 type: 'tabPress',
                 target: route.key,
@@ -88,7 +114,7 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
             );
           })}
         </View>
-      </View>
+      </MotiView>
     </View>
   );
 }
@@ -104,17 +130,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
   bar: {
     flexDirection: 'row',
-    borderRadius: 24,
-    backgroundColor: colors.bgElevated,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderRadius: 26,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
     paddingTop: 10,
     paddingBottom: 8,
     paddingHorizontal: 6,

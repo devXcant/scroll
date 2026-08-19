@@ -4,7 +4,7 @@ import { sanitizeCoachText } from './coachText.js';
 
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY ?? process.env.EXPO_PUBLIC_OPENROUTER_API_KEY ?? '';
 const OPENROUTER_MODEL =
-  process.env.OPENROUTER_MODEL ?? 'google/gemini-2.5-flash-preview';
+  process.env.OPENROUTER_MODEL ?? 'perplexity/sonar-pro';
 
 const SYSTEM_PROMPT = `You are SCROLL Coach, the in app guide for SCROLL.
 ${SCROLL_COACH_KNOWLEDGE}
@@ -58,7 +58,8 @@ export function registerCoachRoutes(app: Express): void {
             ...history.map((m) => ({ role: m.role, content: m.content })),
             { role: 'user', content: latest + interestLine },
           ],
-          max_tokens: 280,
+          plugins: [{ id: 'web', max_results: 5 }],
+          max_tokens: 700,
           temperature: 0.5,
         }),
       });

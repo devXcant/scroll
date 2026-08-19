@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Keyboard,
   Modal,
@@ -9,19 +8,24 @@ import {
   StyleSheet,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MotiView } from 'moti';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { GlassHeader } from '@/components/ui/GlassHeader';
 import { Button } from '@/components/ui/Button';
 import { NewChatFab } from '@/components/ui/NewChatFab';
 import { ChatBubble } from '@/components/coach/ChatBubble';
-import { CoachComposer } from '@/components/coach/CoachComposer';
+import { ThinkingTrace } from '@/components/coach/ThinkingTrace';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import { ScrollIcon } from '@/components/ui/ScrollIcon';
 import { colors } from '@/constants/theme';
-import { TAB_BAR_HEIGHT } from '@/constants/layout';
+import { TAB_BAR_HEIGHT, TAB_SCROLL_PAD } from '@/constants/layout';
 import { useAppStore } from '@/stores/appStore';
+import { useChromeUi } from '@/stores/chromeUi';
 import { COACH_STARTERS, sendCoachMessage } from '@/services/aiCoach';
 import { getEffectiveInterests } from '@/services/coachInterests';
 import type { CoachMessage, CoachSession } from '@/types';
@@ -43,6 +47,7 @@ function hasUserMessages(session: CoachSession): boolean {
 
 export default function CoachScreen() {
   const insets = useSafeAreaInsets();
+  const setChromeHidden = useChromeUi((s) => s.setHidden);
   const coachSessions = useAppStore((s) => s.coachSessions);
   const activeCoachSessionId = useAppStore((s) => s.activeCoachSessionId);
   const createCoachSession = useAppStore((s) => s.createCoachSession);
@@ -55,16 +60,44 @@ export default function CoachScreen() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CoachSession | null>(null);
+  const [kb, setKb] = useState(0);
+  const [chromeDown, setChromeDown] = useState(false);
   const listRef = useRef<FlatList<CoachMessage>>(null);
+  const lastY = useRef(0);
 
   const activeSession = coachSessions.find((s) => s.id === activeCoachSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
   const showChat = activeSession !== null;
   const showStarters = showChat && !hasUserMessages(activeSession!);
-  const composerBottom = insets.bottom + TAB_BAR_HEIGHT + 8;
-  const fabBottom = composerBottom;
+  const keyboardOpen = kb > 0;
+  const hideChrome = keyboardOpen || chromeDown;
+  const composerBottom = keyboardOpen ? Math.max(8, kb - insets.bottom + 8) : hideChrome ? 12 : insets.bottom + TAB_BAR_HEIGHT + 8;
+  const fabBottom = insets.bottom + TAB_BAR_HEIGHT + 8;
 
   const historySessions = coachSessions.filter((s) => hasUserMessages(s));
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => {
+      setKb(e.endCoordinates.height);
+      setChromeHidden(true);
+      setChromeDown(false);
+    });
+    const hide = Keyboard.addListener(hideEvt, () => {
+      setKb(0);
+      setChromeHidden(false);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+      setChromeHidden(false);
+    };
+  }, [setChromeHidden]);
+
+  useEffect(() => {
+    setChromeHidden(hideChrome && showChat);
+  }, [hideChrome, showChat, setChromeHidden]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -73,6 +106,19 @@ export default function CoachScreen() {
       });
     }
   }, [messages.length, loading]);
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (keyboardOpen) return;
+    const y = e.nativeEvent.contentOffset.y;
+    const dy = y - lastY.current;
+    lastY.current = y;
+    if (y < 24) {
+      setChromeDown(false);
+      return;
+    }
+    if (dy > 10) setChromeDown(true);
+    if (dy < -10) setChromeDown(false);
+  };
 
   const startNewChat = () => {
     createCoachSession();
@@ -87,6 +133,8 @@ export default function CoachScreen() {
       deleteCoachSession(activeSession.id);
     }
     setActiveCoachSession(null);
+    setChromeDown(false);
+    setChromeHidden(false);
   };
 
   const confirmDelete = () => {
@@ -118,6 +166,7 @@ export default function CoachScreen() {
       lock,
       suggestedUnlock: lock.isLocked ? 'read' : undefined,
       interests,
+      displayName: state.userDisplayName || state.signedInProfile?.displayName,
     });
     appendCoachMessage(sessionId, reply);
     setLoading(false);
@@ -127,16 +176,16 @@ export default function CoachScreen() {
     return (
       <GradientBackground>
         <SafeAreaView className="flex-1" edges={['top']}>
-          <GlassHeader title="Coach" subtitle="Your focus guide" />
+          <GlassHeader title="Coach" subtitle="Ask anything. Get a useful answer." />
           <FlatList
             data={historySessions}
             keyExtractor={(s) => s.id}
             className="flex-1 px-4"
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: fabBottom + 80 }}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: TAB_SCROLL_PAD + 80 }}
             ListEmptyComponent={
               <GlassCard>
                 <Text className="font-body leading-[22px] text-scroll-muted">
-                  Ask anything about SCROLL, your limits, or your goals. Tap + to start.
+                  Tap + and ask about your goals, sport, sleep, or SCROLL. Coach answers here.
                 </Text>
               </GlassCard>
             }
@@ -176,7 +225,7 @@ export default function CoachScreen() {
 
   if (!activeSession) return null;
 
-  const listPaddingBottom = COMPOSER_HEIGHT + composerBottom + (showStarters ? 96 : 16);
+  const listPaddingBottom = COMPOSER_HEIGHT + composerBottom + (showStarters ? 88 : 20);
 
   return (
     <GradientBackground>
@@ -194,46 +243,51 @@ export default function CoachScreen() {
           className="flex-1 px-4"
           contentContainerStyle={{ flexGrow: 1, paddingTop: 8, paddingBottom: listPaddingBottom }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          onScrollBeginDrag={() => Keyboard.dismiss()}
           ListEmptyComponent={
             <GlassCard>
               <Text className="font-body leading-[22px] text-scroll-muted">
-                Ask anything about SCROLL, focus, locks, or your goals.
+                Ask about sleep, career, or how SCROLL works. Answers land here.
               </Text>
             </GlassCard>
           }
-          ListFooterComponent={
-            loading ? (
-              <View style={styles.thinking}>
-                <ActivityIndicator color={colors.iconActive} />
-                <Text className="font-body text-sm text-scroll-muted">Coach is thinking</Text>
-              </View>
-            ) : null
-          }
+          ListFooterComponent={loading ? <ThinkingTrace /> : null}
           renderItem={({ item }) => (
             <ChatBubble role={item.role === 'user' ? 'user' : 'assistant'} content={item.content} />
           )}
         />
 
         {showStarters ? (
-          <View style={[styles.starters, { bottom: composerBottom + COMPOSER_HEIGHT + 10 }]}>
+          <MotiView
+            animate={{ opacity: hideChrome ? 0 : 1, translateY: hideChrome ? 16 : 0 }}
+            pointerEvents={hideChrome ? 'none' : 'auto'}
+            style={[styles.starters, { bottom: composerBottom + COMPOSER_HEIGHT + 10 }]}>
             {COACH_STARTERS.map((s) => (
               <Pressable key={s} style={styles.chip} onPress={() => void send(s)}>
                 <Text style={styles.chipText}>{s}</Text>
               </Pressable>
             ))}
-          </View>
+          </MotiView>
         ) : null}
 
-        <CoachComposer
-          value={input}
-          onChange={setInput}
-          loading={loading}
-          bottom={composerBottom}
-          onSend={() => {
-            Keyboard.dismiss();
-            void send(input);
-          }}
-        />
+        <MotiView
+          animate={{ opacity: hideChrome && !keyboardOpen ? 0 : 1, translateY: hideChrome && !keyboardOpen ? 28 : 0 }}
+          pointerEvents={hideChrome && !keyboardOpen ? 'none' : 'box-none'}
+          transition={{ type: 'timing', duration: 200 }}
+        >
+          <CoachComposer
+            value={input}
+            onChange={setInput}
+            loading={loading}
+            bottom={composerBottom}
+            onSend={() => {
+              void send(input);
+            }}
+          />
+        </MotiView>
       </SafeAreaView>
     </GradientBackground>
   );
@@ -251,9 +305,8 @@ function SessionRow({
   const lastUser = [...session.messages].reverse().find((m) => m.role === 'user');
   const preview = lastUser?.content ?? '';
   return (
-    <Pressable
-      onPress={onPress}
-      className="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] active:opacity-90">
+    <Pressable onPress={onPress} className="mb-3 overflow-hidden rounded-2xl active:opacity-90">
+      <GlassSurface style={{ borderRadius: 16 }}>
       <View className="flex-row items-center gap-3 px-4 py-3.5">
         <View className="h-10 w-10 items-center justify-center rounded-full bg-scroll-accent/15">
           <ScrollIcon name="message-circle" size={18} color={colors.accent} />
@@ -271,24 +324,12 @@ function SessionRow({
           <ScrollIcon name="trash-2" size={16} color={colors.iconMuted} />
         </Pressable>
       </View>
+      </GlassSurface>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  thinking: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    alignSelf: 'flex-start',
-    marginBottom: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
   starters: {
     position: 'absolute',
     left: 16,

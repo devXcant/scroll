@@ -20,13 +20,13 @@ export function AppLockPanel({ app, compact }: Props) {
   const lock = useAppStore((s) => s.lock);
   const lockEndsAt = useAppStore((s) => s.lockEndsAt);
   const lockMinEndsAt = useAppStore((s) => s.lockMinEndsAt);
-  const lastPenaltyReason = useAppStore((s) => s.lastPenaltyReason);
   const scrollPoints = useAppStore((s) => s.scrollPoints);
   const spendPointsReduceLock = useAppStore((s) => s.spendPointsReduceLock);
   const onLockTimerFinished = useAppStore((s) => s.onLockTimerFinished);
   const [pointsBusy, setPointsBusy] = useState(false);
 
-  if (!lock.isLocked || lock.triggeredByAppId !== app.id) return null;
+  if (!lock.isLocked) return null;
+  if (lock.triggeredByAppId !== app.id && lock.triggeredByAppId !== app.bundleId) return null;
 
   return (
     <GlassCard glow className={compact ? 'mb-4' : 'mb-6'}>
@@ -44,12 +44,6 @@ export function AppLockPanel({ app, compact }: Props) {
         compact
         onTimerExpired={() => onLockTimerFinished(app.name)}
       />
-
-      {lastPenaltyReason ? (
-        <Text className="mb-2 text-center font-body text-xs text-scroll-danger">
-          +2 min added: {lastPenaltyReason}
-        </Text>
-      ) : null}
 
       <Text className="mb-3 font-body-medium text-sm text-scroll-accent">Points: {scrollPoints}</Text>
 

@@ -16,7 +16,7 @@ export function useLockOnForeground() {
     const sub = AppState.addEventListener('change', (next) => {
       if (next !== 'active') return;
       if (!useAppStore.getState().onboardingComplete) return;
-      if (isUnlockFlowPath(pathname)) return;
+      if (isUnlockFlowPath(pathname) || useAppStore.getState().unlockFlowActive) return;
       void (async () => {
         await useAppStore.getState().refreshUsage();
         await useAppStore.getState().evaluateLock();

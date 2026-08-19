@@ -1,6 +1,8 @@
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { MotiView } from 'moti';
 import { ScrollIcon } from '@/components/ui/ScrollIcon';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import { colors, spacing } from '@/constants/theme';
 
 type Props = {
@@ -8,24 +10,45 @@ type Props = {
   bottomOffset?: number;
 };
 
-/** Floating new-chat — bottom-right, above tab bar */
 export function NewChatFab({ onPress, bottomOffset = 88 }: Props) {
   const bottomPx = bottomOffset + spacing.md;
 
   return (
-    <View
-      pointerEvents="box-none"
-      className="absolute right-5 z-[100]"
-      style={{ bottom: bottomPx }}>
-      <Pressable
-        className="h-14 w-14 items-center justify-center rounded-full border border-scroll-border-glow bg-scroll-surface-hover shadow-lg shadow-black/40 active:opacity-90"
-        onPress={() => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          onPress();
-        }}
-        accessibilityLabel="New chat">
-        <ScrollIcon name="plus" size={26} color={colors.text} />
-      </Pressable>
+    <View pointerEvents="box-none" style={[styles.wrap, { bottom: bottomPx }]}>
+      <MotiView
+        from={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: 'spring', damping: 14, stiffness: 180 }}>
+        <Pressable
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onPress();
+          }}
+          accessibilityLabel="New chat"
+          style={({ pressed }) => [pressed && styles.pressed]}>
+          <GlassSurface glow interactive style={styles.fab}>
+            <ScrollIcon name="plus" size={26} color={colors.text} />
+          </GlassSurface>
+        </Pressable>
+      </MotiView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  wrap: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 100,
+  },
+  fab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.88,
+  },
+});

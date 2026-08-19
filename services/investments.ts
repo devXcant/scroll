@@ -21,6 +21,12 @@ function normalizePortfolio(raw: PortfolioSummary): PortfolioSummary {
   };
 }
 
+export async function replacePortfolio(next: PortfolioSummary): Promise<PortfolioSummary> {
+  const normalized = normalizePortfolio(next);
+  await AsyncStorage.setItem(PORTFOLIO_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
 export async function getPortfolio(): Promise<PortfolioSummary> {
   const raw = await AsyncStorage.getItem(PORTFOLIO_KEY);
   if (!raw) return DEFAULT_PORTFOLIO;

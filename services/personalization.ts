@@ -27,7 +27,7 @@ const BOOKS_WITH_TAGS: ReadingBook[] = [
   },
   {
     id: 'deep-work',
-    title: 'Deep Work (excerpt)',
+    title: 'One hour that actually counts',
     totalPages: 8,
     requiredMinutes: 6,
     tags: ['productivity', 'focus', 'career'],
@@ -59,17 +59,19 @@ const BOOKS_WITH_TAGS: ReadingBook[] = [
   },
   {
     id: 'sports-recovery',
-    title: 'Athlete’s Recovery Mindset',
-    totalPages: 6,
-    requiredMinutes: 5,
-    tags: ['sports', 'health', 'fitness'],
+    title: 'Game day, not feed day',
+    totalPages: 8,
+    requiredMinutes: 6,
+    tags: ['sports', 'sport', 'health', 'fitness', 'football', 'basketball', 'soccer', 'gym'],
     pages: [
-      'Growth happens in recovery, not during another highlight reel.',
-      'Two minutes of mobility beats twenty minutes of thumb cardio.',
-      'Hydration and sleep outperform any supplement trend on your feed.',
-      'Compare you to yesterday’s you, not a stranger’s edited clip.',
-      'Rest days are programmed, not earned by guilt.',
-      'Stand up, breathe, close this lesson. Your body will thank you.',
+      'The feed sells you highlights. Your body only grows from sleep, food, and the work nobody films.',
+      'After training, your nervous system needs a downshift. Another hour of clips keeps it in fight mode, which is the opposite of recovery.',
+      'Pick one film-study rule: watch a clip twice, write one thing you would do differently, then close the app. That is study. Infinite replay is not.',
+      'Pros protect the night before a match. Late scrolling delays melatonin, which delays sleep, which costs you the first step and the last sprint.',
+      'Hydrate, protein, and ten minutes off your feet beat any “one more video.” Your future self on the pitch already knows this.',
+      'Compare your last session to your last session, not to a stranger’s edit. The algorithm is not your coach.',
+      'When the urge hits, stand up and bounce on your toes for thirty seconds. If you still want the app after that, you can choose it on purpose.',
+      'You just trained attention. Close this. Eat. Sleep. Show up tomorrow sharper than the version of you who kept scrolling.',
     ],
   },
   {
@@ -94,6 +96,14 @@ export function getPersonalizedBooks(interests: string[]): ReadingBook[] {
     return [BOOKS_WITH_TAGS[0]];
   }
   const lower = interests.map((i) => i.toLowerCase());
+  const sportAsk = lower.some((i) =>
+    /sport|football|soccer|basketball|gym|athlete|fitness|training|match|game/.test(i)
+  );
+  if (sportAsk) {
+    const sports = BOOKS_WITH_TAGS.filter((b) => b.tags.includes('sports') || b.tags.includes('sport'));
+    const rest = BOOKS_WITH_TAGS.filter((b) => !sports.includes(b));
+    return [...sports, ...rest];
+  }
   const scored = BOOKS_WITH_TAGS.map((book) => {
     const score = book.tags.filter((t) =>
       lower.some((i) => i.includes(t) || t.includes(i))
@@ -167,18 +177,23 @@ const EXTRA_LEARN_MODULES: LearnModule[] = [
   {
     id: 'basketball-mind',
     topic: 'sports',
-    title: 'Court vision for life',
-    durationMinutes: 4,
+    title: 'See the whole floor',
+    durationMinutes: 5,
     slides: [
       {
         id: '1',
         title: 'Eyes up',
-        body: 'Great players scan the floor. Scrolling trains tunnel vision on one screen, bad for sport and life.',
+        body: 'Great players scan. Scrolling trains you to stare at one rectangle. Before you open a feed, name three things in the room. That is court vision for life.',
       },
       {
         id: '2',
-        title: 'Recovery',
-        body: 'Highlights are 1% of training. Sleep and mobility are the other 99%.',
+        title: 'Film, then stop',
+        body: 'Pros watch film with a question. Amateurs watch until the algorithm chooses the next clip. Write the question first: spacing, first touch, recovery run.',
+      },
+      {
+        id: '3',
+        title: 'Recovery is a session',
+        body: 'Sleep, food, and walking are training. Treat them like you treat the gym, not like leftover time after the feed.',
       },
     ],
   },
@@ -235,25 +250,29 @@ export function getPersonalizedModules(interests: string[]): LearnModule[] {
   const topicMap: Record<string, string[]> = {
     health: ['health', 'sleep', 'wellness', 'fitness', 'nutrition', 'food'],
     history: ['history', 'culture', 'politics', 'news'],
-    sports: ['sports', 'fitness', 'athlete', 'basketball', 'football', 'soccer', 'gym'],
+    sports: ['sports', 'sport', 'fitness', 'athlete', 'basketball', 'football', 'soccer', 'gym', 'training', 'match'],
     mindfulness: ['mindfulness', 'meditation', 'calm', 'focus', 'stoic', 'career', 'work'],
   };
-  const filtered = ALL_MODULES.filter((m) => {
+  const scored = ALL_MODULES.map((m) => {
     const aliases = topicMap[m.topic] ?? [m.topic];
-    return lower.some(
-      (i) =>
+    const score = lower.reduce((sum, i) => {
+      const hit =
         aliases.some((a) => i.includes(a) || a.includes(i)) ||
         i.includes(m.topic) ||
-        m.title.toLowerCase().includes(i)
-    );
+        m.title.toLowerCase().includes(i);
+      return sum + (hit ? 1 : 0);
+    }, 0);
+    return { m, score };
   });
+  scored.sort((a, b) => b.score - a.score);
+  const matched = scored.filter((s) => s.score > 0).map((s) => s.m);
   const seen = new Set<string>();
-  const uniq = filtered.filter((m) => {
+  const uniq = (matched.length > 0 ? matched : ALL_MODULES).filter((m) => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
     return true;
   });
-  return uniq.length > 0 ? uniq : ALL_MODULES;
+  return uniq;
 }
 
 export function parseInterestsFromText(text: string): string[] {

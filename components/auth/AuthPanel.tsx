@@ -1,15 +1,18 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { requireOptionalNativeModule } from 'expo-modules-core';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
+import { AppleSignInButton } from '@/components/auth/AppleSignInButton';
 import { GoogleLogo } from '@/components/auth/GoogleLogo';
+import { Button } from '@/components/ui/Button';
+import { GlassSurface } from '@/components/ui/GlassSurface';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/stores/appStore';
 import { sendPhoneOtp, verifyPhoneOtp } from '@/services/auth';
@@ -20,13 +23,8 @@ import {
   type CountryCode,
 } from '@/constants/countryCodes';
 import { generateDefaultDisplayName } from '@/lib/defaultDisplayName';
-
-const GoogleSignInButton = lazy(() =>
-  import('./GoogleSignInButton').then((m) => ({ default: m.GoogleSignInButton }))
-);
-const AppleSignInButton = lazy(() =>
-  import('./AppleSignInButton').then((m) => ({ default: m.AppleSignInButton }))
-);
+import { isGoogleAuthConfigured } from '@/services/authGoogle';
+import { OtpInput } from '@/components/auth/OtpInput';
 
 const googleNativeReady = requireOptionalNativeModule('ExpoCrypto') != null;
 const RESEND_SECONDS = 30;
@@ -47,6 +45,8 @@ export function AuthPanel({ onAuthenticated }: Props) {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+  const [otpHint, setOtpHint] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [resendIn, setResendIn] = useState(0);
 
@@ -68,196 +68,184 @@ export function AuthPanel({ onAuthenticated }: Props) {
     if (displayName.trim()) setUserDisplayName(displayName.trim());
   };
 
-  const validateForm = (): boolean => {
-    persistName();
-    if (!email.trim().includes('@')) {
-      Alert.alert('Email required', 'Enter a valid email. Your verification code will be sent there.');
-      return false;
-    }
-    if (phone.replace(/\D/g, '').length < 6) {
-      Alert.alert('Phone number', 'Enter a valid phone number.');
-      return false;
-    }
-    return true;
-  };
-
   const sendOtp = async () => {
-    if (!validateForm()) return;
+    persistName();
+    setError('');
     setLoading(true);
     const result = await sendPhoneOtp(fullPhone, email.trim());
     setLoading(false);
     if (!result.ok) {
-      Alert.alert('Could not send code', result.error ?? 'Try again.');
+      setError(result.error ?? 'We could not send a code. Try again.');
       return;
+    }
+
+    if (result.emailed && result.texted) {
+      setOtpHint('We sent a code to your email and your phone.');
+    } else if (result.texted) {
+      setOtpHint('We texted a code to your phone.');
+    } else {
+      setOtpHint(`We emailed a code to ${email.trim()}.`);
     }
     setOtpSent(true);
     setResendIn(RESEND_SECONDS);
   };
 
   const verifyOtp = async () => {
-    if (!validateForm()) return;
+    persistName();
+    setError('');
+    if (!code.trim()) {
+      setError('Enter the 6 digit code we sent you.');
+      return;
+    }
     setLoading(true);
     const verified = await verifyPhoneOtp(fullPhone, email.trim(), code);
     if (!verified.ok) {
       setLoading(false);
-      Alert.alert('Invalid code', verified.error ?? 'Try again.');
+      setError(verified.error ?? 'That code is not right. Try again or resend a new one.');
       return;
     }
     const saved = await completePhoneSignIn(fullPhone, email.trim(), displayName.trim());
     setLoading(false);
     if (saved.ok) onAuthenticated?.();
-    else Alert.alert('Sign-in failed', 'Could not save your account.');
+    else setError('We could not finish creating your account. Try again.');
   };
 
   if (signedInProfile) {
     return (
-      <View className="rounded-2xl border border-scroll-border bg-scroll-card/80 px-5 py-5">
-        <Text className="font-display-semibold text-lg text-scroll-text">You&apos;re signed in</Text>
+      <GlassSurface style={{ borderRadius: 16, paddingHorizontal: 20, paddingVertical: 20 }}>
+        <Text className="font-display-semibold text-lg text-scroll-text">You are signed in</Text>
         <Text className="mt-1 font-body text-sm text-scroll-muted">
           {signedInProfile.displayName}
           {signedInProfile.email ? ` · ${signedInProfile.email}` : ''}
           {signedInProfile.phone ? ` · +${signedInProfile.phone}` : ''}
         </Text>
-      </View>
+      </GlassSurface>
     );
   }
 
   return (
-    <View className="gap-5">
-      <View className="rounded-2xl px-4 py-4">
-        <Text className="mb-2 font-body-medium text-sm text-scroll-text">Display name</Text>
-        <TextInput
-          className="mb-4 h-[52px] rounded-xl border border-scroll-border px-4 font-body text-base text-scroll-text"
-          placeholder="user_Scroll_123456"
-          placeholderTextColor={colors.textDim}
-          value={displayName}
-          onChangeText={setDisplayName}
-          onBlur={persistName}
-          autoCapitalize="none"
-        />
-        <Text className="mb-2 font-body-medium text-sm text-scroll-text">Email</Text>
-        <TextInput
-          className="h-[52px] rounded-xl border border-scroll-border px-4 font-body text-base text-scroll-text"
-          placeholder="you@example.com"
-          placeholderTextColor={colors.textDim}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={email}
-          onChangeText={setEmail}
-          editable={!otpSent && !loading}
-        />
-      </View>
-
-      <View className="gap-3">
-        {googleNativeReady ? (
-          <Suspense
-            fallback={
-              <View className="h-[52px] items-center justify-center rounded-xl border border-[#747775] bg-white">
-                <ActivityIndicator color="#1f1f1f" />
-              </View>
-            }>
-            <GoogleSignInButton
-              loading={loading}
-              setLoading={setLoading}
-              onAuthenticated={() => {
-                persistName();
-                onAuthenticated?.();
-              }}
-            />
-          </Suspense>
-        ) : (
-          <Pressable
-            onPress={() =>
-              Alert.alert(
-                'Rebuild required',
-                'Google sign-in needs a fresh dev build. Run pnpm run ios, or sign in with email + phone.'
-              )
-            }
-            className="h-[52px] w-full flex-row items-center justify-center rounded-xl border border-[#747775] bg-white active:opacity-90">
-            <GoogleLogo size={20} />
-            <Text className="ml-3 font-body-medium text-base text-[#1f1f1f]">Sign in with Google</Text>
-          </Pressable>
-        )}
-
-        {Platform.OS === 'ios' ? (
-          <Suspense fallback={<View className="h-[52px] rounded-xl bg-white/10" />}>
-            <AppleSignInButton
-              setLoading={setLoading}
-              onAuthenticated={() => {
-                persistName();
-                onAuthenticated?.();
-              }}
-            />
-          </Suspense>
-        ) : null}
-      </View>
-
-      <View className="flex-row items-center gap-3">
-        <View className="h-px flex-1 bg-scroll-border" />
-        <Text className="font-body text-xs uppercase tracking-[1px] text-scroll-dim">or</Text>
-        <View className="h-px flex-1 bg-scroll-border" />
-      </View>
-
-      <View className="rounded-2xl px-4 py-4">
-        <Text className="mb-3 font-body-medium text-sm text-scroll-text">Phone number</Text>
-        <View className="mb-3 flex-row gap-2">
-          <CountryCodePicker value={country} onChange={setCountry} disabled={otpSent || loading} />
+    <View className="flex-1">
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View className="rounded-2xl px-1 py-2">
+          <Text className="mb-2 font-body-medium text-sm text-scroll-text">Display name</Text>
           <TextInput
-            className="h-[52px] flex-1 rounded-xl border border-scroll-border bg-scroll-surface px-4 font-body text-base text-scroll-text"
-            placeholder="555 123 4567"
+            className="mb-4 h-[52px] rounded-xl border border-scroll-border px-4 font-body text-base text-scroll-text"
+            placeholder="user_Scroll_123456"
             placeholderTextColor={colors.textDim}
-            keyboardType="phone-pad"
-            value={phone}
-            onChangeText={setPhone}
+            value={displayName}
+            onChangeText={setDisplayName}
+            onBlur={persistName}
+            autoCapitalize="none"
+          />
+          <Text className="mb-2 font-body-medium text-sm text-scroll-text">Email</Text>
+          <TextInput
+            className="mb-4 h-[52px] rounded-xl border border-scroll-border px-4 font-body text-base text-scroll-text"
+            placeholder="you@example.com"
+            placeholderTextColor={colors.textDim}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={email}
+            onChangeText={(value) => {
+              setEmail(value);
+              setError('');
+            }}
             editable={!otpSent && !loading}
           />
+          <View className="mb-4 mt-1 flex-row items-center gap-3">
+            <View className="h-px flex-1 bg-scroll-border" />
+            <Text className="font-body text-xs uppercase tracking-[1px] text-scroll-dim">or</Text>
+            <View className="h-px flex-1 bg-scroll-border" />
+          </View>
+          <Text className="mb-2 font-body-medium text-sm text-scroll-text">Phone number</Text>
+          <View className="mb-2 flex-row gap-2">
+            <CountryCodePicker value={country} onChange={setCountry} disabled={otpSent || loading} />
+            <TextInput
+              className="h-[52px] flex-1 rounded-xl border border-scroll-border bg-scroll-surface px-4 font-body text-base text-scroll-text"
+              placeholder="555 123 4567"
+              placeholderTextColor={colors.textDim}
+              keyboardType="phone-pad"
+              value={phone}
+              onChangeText={(value) => {
+                setPhone(value);
+                setError('');
+              }}
+              editable={!otpSent && !loading}
+            />
+          </View>
         </View>
 
-        {!otpSent ? (
-          <Pressable
-            disabled={loading}
-            onPress={() => void sendOtp()}
-            className="h-[52px] items-center justify-center rounded-xl bg-scroll-accent active:opacity-90 disabled:opacity-50">
-            {loading ? (
-              <ActivityIndicator color={colors.text} />
-            ) : (
-              <Text className="font-body-medium text-base text-scroll-text">Email verification code</Text>
-            )}
-          </Pressable>
-        ) : (
+        {isGoogleAuthConfigured() || Platform.OS === 'ios' ? (
+          <View className="mb-4 gap-3">
+            {isGoogleAuthConfigured() && googleNativeReady ? (
+              <GoogleSignInButton
+                loading={loading}
+                setLoading={setLoading}
+                onAuthenticated={() => {
+                  persistName();
+                  onAuthenticated?.();
+                }}
+              />
+            ) : isGoogleAuthConfigured() ? (
+              <Pressable
+                onPress={() =>
+                  setError('Google sign-in is not ready on this build. Use email or phone instead.')
+                }
+                className="h-[52px] w-full flex-row items-center justify-center rounded-xl border border-[#747775] bg-white active:opacity-90">
+                <GoogleLogo size={20} />
+                <Text className="ml-3 font-body-medium text-base text-[#1f1f1f]">Sign in with Google</Text>
+              </Pressable>
+            ) : null}
+
+            {Platform.OS === 'ios' ? (
+              <AppleSignInButton
+                setLoading={setLoading}
+                onAuthenticated={() => {
+                  persistName();
+                  onAuthenticated?.();
+                }}
+              />
+            ) : null}
+          </View>
+        ) : null}
+
+        {otpSent ? (
+          <View className="px-1 pb-4">
+            <Text className="mb-3 font-body text-sm leading-5 text-scroll-muted">{otpHint}</Text>
+            <OtpInput value={code} onChange={(value) => { setCode(value); setError(''); }} disabled={loading} />
+          </View>
+        ) : null}
+      </ScrollView>
+
+      {error ? (
+        <Text className="mb-3 px-1 font-body text-sm leading-5 text-scroll-danger">{error}</Text>
+      ) : null}
+
+      <View className="w-full pb-8 pt-2">
+        {otpSent ? (
           <>
-            <Text className="mb-2 font-body text-sm text-scroll-muted">
-              Code sent to {email.trim()}. Check spam if it does not arrive.
-            </Text>
-            <TextInput
-              className="mb-3 h-[52px] rounded-xl border border-scroll-border bg-scroll-surface px-4 font-body text-base tracking-[8px] text-scroll-text"
-              placeholder="6-digit code"
-              placeholderTextColor={colors.textDim}
-              keyboardType="number-pad"
-              maxLength={6}
-              value={code}
-              onChangeText={setCode}
-            />
-            <Pressable
-              disabled={loading}
-              onPress={() => void verifyOtp()}
-              className="h-[52px] items-center justify-center rounded-xl bg-scroll-accent active:opacity-90 disabled:opacity-50">
-              {loading ? (
-                <ActivityIndicator color={colors.text} />
-              ) : (
-                <Text className="font-body-medium text-base text-scroll-text">Verify & continue</Text>
-              )}
-            </Pressable>
             <Pressable
               disabled={loading || resendIn > 0}
               onPress={() => void sendOtp()}
-              className="mt-3 items-center py-2 active:opacity-80 disabled:opacity-40">
+              className="mb-3 items-center py-2 active:opacity-80 disabled:opacity-40">
               <Text className="font-body text-sm text-scroll-muted">
                 {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
               </Text>
             </Pressable>
+            <Button
+              label="Verify & continue"
+              loading={loading}
+              disabled={loading}
+              onPress={() => void verifyOtp()}
+            />
           </>
+        ) : (
+          <Button
+            label="Send verification code"
+            loading={loading}
+            disabled={loading}
+            onPress={() => void sendOtp()}
+          />
         )}
       </View>
     </View>

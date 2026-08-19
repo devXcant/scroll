@@ -7,6 +7,8 @@ import {
   isNativeBlockerModuleAvailable,
   requestNativeShieldAuthorization,
 } from '@/services/nativeShield';
+import { loadAppBlocker } from '@/lib/appBlocker';
+import { getNotificationsGranted } from '@/services/notifications';
 
 const SCROLL_BUNDLE =
   Platform.OS === 'ios'
@@ -85,23 +87,7 @@ export async function grantShieldAccess(): Promise<boolean> {
   }
 
   if (isNativeBlockerModuleAvailable()) {
-    const granted = await requestNativeShieldAuthorization();
-    if (!granted) {
-      Alert.alert(
-        'Permission needed',
-        Platform.OS === 'ios'
-          ? 'Allow Screen Time access so SCROLL can shield the apps you pick.'
-          : 'Allow Usage access and Display over other apps so SCROLL can block apps when you hit a limit.',
-        [
-          {
-            text: 'Open settings',
-            onPress: () => void openScrollAppSettings(),
-          },
-          { text: 'OK', style: 'cancel' },
-        ]
-      );
-    }
-    return granted;
+    return requestNativeShieldAuthorization();
   }
 
   if (isScrollNativeBuild()) {
@@ -114,4 +100,42 @@ export async function grantShieldAccess(): Promise<boolean> {
   }
 
   return false;
+}
+
+export type OsPermissionSnapshot = {
+  shieldEnabled: boolean;
+  usageStats: boolean;
+  overlay: boolean;
+  notifications: boolean;
+};
+
+export async function readOsPermissions(): Promise<OsPermissionSnapshot> {
+  const notifications = await getNotificationsGranted();
+  const empty: OsPermissionSnapshot = {
+    shieldEnabled: false,
+    usageStats: false,
+    overlay: false,
+    notifications,
+  };
+  const mod = loadAppBlocker();
+  if (!mod) return empty;
+  try {
+    const status = await mod.getPermissionStatus();
+    if (status.details.platform === 'android') {
+      return {
+        shieldEnabled: status.details.overlay && status.details.usageStats,
+        usageStats: status.details.usageStats,
+        overlay: status.details.overlay,
+        notifications: status.details.notifications || notifications,
+      };
+    }
+    return {
+      shieldEnabled: status.details.authorized,
+      usageStats: status.details.authorized,
+      overlay: false,
+      notifications,
+    };
+  } catch {
+    return empty;
+  }
 }

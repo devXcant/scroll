@@ -7,7 +7,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { PayCooldown } from '@/components/ui/PayCooldown';
 import { useAppStore } from '@/stores/appStore';
-import { getEscalatingTier, isStripeConfigured } from '@/services/payments';
+import { getEscalatingTier } from '@/services/payments';
 import { isWalletPayAvailable } from '@/services/stripeUnlock';
 import { WalletPayButton } from '@/components/ui/WalletPayButton';
 import { canPayUnlock, getPayUnlockCooldownMs, penalizeSillyAttempt } from '@/services/antiCheat';
@@ -27,7 +27,6 @@ export default function PayUnlockScreen() {
   const [walletReady, setWalletReady] = useState(false);
   const [cooldownMs, setCooldownMs] = useState(getPayUnlockCooldownMs(appId));
   const [confettiKey, setConfettiKey] = useState(0);
-  const stripeOn = isStripeConfigured();
 
   useEffect(() => {
     void isWalletPayAvailable().then(setWalletReady);
@@ -74,7 +73,8 @@ export default function PayUnlockScreen() {
       result.investedCents ?? investedPreview
     );
     unlock('pay', tier.unlockMinutes, appId);
-    router.replace('/(tabs)');
+    setConfettiKey((k) => k + 1);
+    setTimeout(() => router.replace('/(tabs)'), 280);
   };
 
   const payWithWallet = () =>
@@ -86,16 +86,16 @@ export default function PayUnlockScreen() {
     <GradientBackground variant="lock">
       <SafeAreaView className="flex-1 px-4 py-6">
         <ConfettiBurst fireKey={confettiKey} />
-        <Text className="text-scroll-text font-display text-[32px]">Pay unlock</Text>
+        <Text className="text-scroll-text font-display text-[32px]">Pay to unlock</Text>
         <Text className="text-scroll-muted font-body mb-6">
-          Last resort, and it gets pricier each time today.
+          Opens the locked app for {tier.unlockMinutes} minutes. The fee is held in your vault.
         </Text>
 
         {!lock.isLocked ? (
           <GlassCard className="mb-6">
-            <Text className="text-scroll-text font-display-semibold mb-1.5">No lock right now</Text>
+            <Text className="text-scroll-text font-display-semibold mb-1.5">Nothing is locked</Text>
             <Text className="text-scroll-muted font-body leading-5">
-              Payment is only for unlocking an active lock after you hit an app limit.
+              You only pay when an app has hit its limit.
             </Text>
           </GlassCard>
         ) : null}
@@ -103,11 +103,7 @@ export default function PayUnlockScreen() {
         <GlassCard glow className="items-center mb-6">
           <Text className="text-scroll-lock font-display text-[56px]">{tier.label}</Text>
           <Text className="text-scroll-muted font-body mt-2 text-center">
-            +{tier.unlockMinutes} min grace · escalation is tracked per app
-          </Text>
-          <Text className="text-scroll-muted font-body-medium mt-4 text-sm">
-            Each pay-unlock today costs more than the last. Read or learn instead
-            to unlock for free.
+            {tier.unlockMinutes} minutes of access
           </Text>
         </GlassCard>
 
@@ -153,15 +149,7 @@ export default function PayUnlockScreen() {
           />
         </View>
 
-        <Text className="text-scroll-dim text-xs font-body mb-6 leading-[18px]">
-          {stripeOn
-            ? walletReady
-              ? Platform.OS === 'ios'
-                ? 'Tap Apple Pay for one-tap unlock, or use card.'
-                : 'Tap Google Pay for one-tap unlock, or use card.'
-              : 'Wallet not set up on this device, card only. Run `pnpm run api` on your Mac.'
-            : 'Dev build + API: real wallet. Otherwise payment simulates success.'}
-        </Text>
+        <View className="h-2" />
 
         <Button variant="ghost" label="Cancel" onPress={() => router.back()} />
       </SafeAreaView>

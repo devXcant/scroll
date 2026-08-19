@@ -37,13 +37,13 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   userBubble: {
-    backgroundColor: 'rgba(217,93,26,0.18)',
-    borderColor: 'rgba(217,93,26,0.35)',
+    backgroundColor: 'rgba(217,93,26,0.28)',
+    borderColor: 'rgba(255,255,255,0.22)',
     borderBottomRightRadius: 6,
   },
   assistantBubble: {
-    backgroundColor: colors.bg,
-    borderColor: colors.border,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.16)',
     borderBottomLeftRadius: 6,
   },
   text: {

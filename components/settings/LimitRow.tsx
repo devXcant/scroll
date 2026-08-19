@@ -60,8 +60,5 @@ export function LimitRow({ app, onChangeLimit, onSubmitLimit }: Props) {
 }
 
 export function limitHintText(): string {
-  if (__DEV__) {
-    return `Tap the number to type a limit (${MIN_APP_LIMIT_MINUTES}–${MAX_APP_LIMIT_MINUTES}m). Testing mode: you can edit limits repeatedly.`;
-  }
   return `Tap the number to type a limit (${MIN_APP_LIMIT_MINUTES}–${MAX_APP_LIMIT_MINUTES}m). One change per app per day.`;
 }

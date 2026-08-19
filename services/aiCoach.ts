@@ -16,14 +16,15 @@ import {
 import {
   INITIAL_LOCK_SECONDS,
   LEARN_REDUCE_SECONDS,
+  LEARN_UNLOCK_MINUTES,
   MIN_LOCK_REMAINING_SECONDS,
   READ_REDUCE_SECONDS,
+  READ_UNLOCK_MINUTES,
 } from '@/constants/lock';
 
-const API_BASE = getApiBaseUrl();
 const OPENROUTER_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY ?? '';
 const OPENROUTER_MODEL =
-  process.env.EXPO_PUBLIC_OPENROUTER_MODEL ?? 'google/gemini-2.5-flash-preview';
+  process.env.EXPO_PUBLIC_OPENROUTER_MODEL ?? 'perplexity/sonar-pro';
 
 const SYSTEM_PROMPT = `You are SCROLL Coach, the in app guide for the SCROLL anti doom scrolling app.
 You know the full product. Answer any question about how SCROLL works, what each tab does, limits, locks, unlocks, points, shields, onboarding, auth, widgets, and notifications.
@@ -31,20 +32,23 @@ You know the full product. Answer any question about how SCROLL works, what each
 ${SCROLL_COACH_KNOWLEDGE}
 
 Live economy numbers:
-Read: ${POINTS_PER_READ_PAGE} point per page, ${READ_REDUCE_SECONDS}s off lock per page.
-Learn: ${LEARN_REDUCE_SECONDS}s off lock per slide.
+Read: ${POINTS_PER_READ_PAGE} point per page, ${READ_REDUCE_SECONDS}s off lock per page. Finish the book for ${READ_UNLOCK_MINUTES} minutes of app access.
+Learn: ${LEARN_REDUCE_SECONDS}s off lock per slide. Finish a lesson for ${LEARN_UNLOCK_MINUTES} minutes of app access.
 Points shave: ${POINTS_LOCK_REDUCE_COST} points removes ${POINTS_LOCK_REDUCE_SECONDS}s.
 Points grace: ${POINTS_GRACE_UNLOCK_COST} points gives ${POINTS_GRACE_UNLOCK_MINUTES} minutes app access.
 Initial lock about ${Math.floor(INITIAL_LOCK_SECONDS / 60)} minutes. Minimum floor about ${Math.floor(MIN_LOCK_REMAINING_SECONDS / 60)} minutes.
 
 ${COACH_STYLE_RULES}
+When the user asks for live news, scores, Premier League, or anything that changes, use current information. Never invent last season as if it is now. If you are unsure, say you need a live search model.
 Prefer unlock paths in this order: read, then learn, then points, then pay last.
-SCROLL Treasury real investing is coming soon. Do not claim user money is already invested.`;
+SCROLL Treasury real investing is coming after the first store release. Do not claim user money is already invested.`;
 
-const ONBOARDING_INTERESTS_PROMPT = `You are SCROLL Coach during onboarding. The user picked topics they care about.
-Reply in 2 to 3 short sentences. Name their topics. Explain one concrete personalization (books, lessons, or prompts).
-${COACH_STYLE_RULES}
-Never mention locks, unlock paths, pay fees, feeds, or Screen Time during onboarding interests.`;
+const ONBOARDING_INTERESTS_PROMPT = `You are SCROLL Coach during onboarding.
+Start with Welcome, then the user's display name.
+Name their topics. Give one useful, specific thought they can use today about those topics.
+Give real content now. Never tell them to open another tab. Never mention locks, pay, or Screen Time.
+2 to 3 short sentences.
+${COACH_STYLE_RULES}`;
 
 function topicsFromMessage(userText: string, interests?: string[]): string {
   if (interests && interests.length > 0) return interests.join(', ');
@@ -61,45 +65,47 @@ export type CoachContext = {
   suggestedUnlock?: UnlockMethod;
   interests?: string[];
   mode?: 'onboarding_interests';
+  displayName?: string;
 };
 
 function fallbackReply(userText: string, context?: CoachContext): string {
+  const name = context?.displayName?.trim().split(/\s+/)[0] || 'there';
   if (context?.mode === 'onboarding_interests') {
     const topics = topicsFromMessage(userText, context.interests);
     return sanitizeCoachText(
-      `Love it, ${topics}. I will pull reading and mini lessons around those, not random filler. Add anything else, or tap Start SCROLL when you are set.`
+      `Welcome, ${name}. ${topics || 'Those topics'} will shape your reading and lessons. Start with one small action today, then tap Start SCROLL.`
     );
   }
 
   const lower = userText.toLowerCase();
-  if (
-    lower.includes('scroll') ||
-    lower.includes('app') ||
-    lower.includes('how') ||
-    lower.includes('what')
-  ) {
+  if (/sport|football|basketball|soccer|gym|fitness|athlete/.test(lower)) {
     return sanitizeCoachText(
-      `SCROLL sets daily limits on apps you choose. When one hits its cap, only that app locks. SCROLL stays open so you can read, learn, spend points, or pay for grace access. Home shows usage. Focus manages limits. Grow previews savings. I help with habits and unlock choices.`
+      `Sports, right now. Recovery is the hidden session: sleep, food, and ten quiet minutes after training beat another hour of highlights. Watch one clip twice, write one adjustment, then close the app. That is film study. Infinite replay is just scrolling.`
+    );
+  }
+  if (/sleep|career|health|histor/.test(lower) && !lower.includes('how')) {
+    return sanitizeCoachText(
+      `Here is a useful cut: pick one 20 minute block today for ${context?.interests?.[0] ?? 'that topic'}, no phone in the room. That beats another hour of half attention.`
     );
   }
   if (lower.includes('unlock') || lower.includes('pay')) {
     const tier = context?.suggestedUnlock === 'pay' ? 'pay' : 'read or learn';
     return sanitizeCoachText(
-      `Pay unlock is the last resort and gets pricier each time today. Try ${tier} first to keep money in your pocket.`
+      `Pay unlock is last resort and gets pricier each time today. Try ${tier} first.`
     );
   }
-  if (lower.includes('invest') || lower.includes('money')) {
+  if (lower.includes('invest') || lower.includes('money') || lower.includes('wallet')) {
     return sanitizeCoachText(
-      `SCROLL Treasury will turn part of pay unlock fees into real investing. It is coming soon. Preview it on Grow. For now, read or learn to unlock for free.`
+      `Pay unlock fees sit in your SCROLL vault on this device. Real investing ships after the store release.`
     );
   }
   if (context?.lock?.isLocked) {
     return sanitizeCoachText(
-      `${context.lock.message} Take 90 seconds to breathe, then open Read or Learn to earn time back without feeding the algorithm.`
+      `${context.lock.message} Read a few pages or finish a lesson to earn time back.`
     );
   }
   return sanitizeCoachText(
-    `I am here for focus, not feeds. Tell me what you were about to open and I will suggest one small replacement ritual.`
+    `Tell me the topic you want, ${name}. I will give you something you can use right now.`
   );
 }
 
@@ -133,7 +139,8 @@ async function callOpenRouter(
       body: JSON.stringify({
         model: OPENROUTER_MODEL,
         messages: toApiMessages(history, userText, systemPrompt),
-        max_tokens: 280,
+        plugins: [{ id: 'web', max_results: 5 }],
+        max_tokens: 700,
         temperature: 0.5,
       }),
     });
@@ -161,9 +168,9 @@ async function callServerCoach(
   userText: string,
   context?: CoachContext
 ): Promise<string | null> {
-  if (!API_BASE) return null;
+  if (!getApiBaseUrl()) return null;
   try {
-    const res = await fetch(`${API_BASE}/coach`, {
+    const res = await fetch(`${getApiBaseUrl()}/coach`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: history, userText, context }),
@@ -198,7 +205,10 @@ export async function sendCoachMessage(
     context?.interests && context.interests.length > 0
       ? `\nUser interests: ${context.interests.join(', ')}. Tailor suggestions.`
       : '';
-  const prompt = userText + interestLine;
+  const nameLine = context?.displayName?.trim()
+    ? `\nUser display name: ${context.displayName.trim()}.`
+    : '';
+  const prompt = userText + interestLine + nameLine;
   const fullHistory = [...history, userMsg];
 
   let content =
@@ -218,8 +228,7 @@ export async function sendCoachMessage(
 }
 
 export const COACH_STARTERS = [
-  'What is SCROLL and how does it work?',
-  'Explain the Home tab',
-  'How do unlocks work?',
-  'Why am I locked right now?',
+  'What is happening in the Premier League right now?',
+  'Give me a 10 minute focus plan',
+  'How do I earn time back?',
 ];

@@ -1,27 +1,32 @@
 import { useMemo, useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { ScreenBackButton } from '@/components/ui/ScreenBackButton';
-import { UsageBarChart } from '@/components/ui/UsageBarChart';
+import { DualUsageChart } from '@/components/ui/DualUsageChart';
+import { TodaySplitBar } from '@/components/ui/TodaySplitBar';
 import { LimitRow } from '@/components/settings/LimitRow';
-import { TAB_BAR_HEIGHT } from '@/constants/layout';
 import { useAppStore } from '@/stores/appStore';
-import { lastNDays, formatDayLabel } from '@/services/usageHistory';
+import { daysFromStart, formatDayLabel } from '@/services/usageHistory';
+import { locksOnDay } from '@/lib/attentionStats';
 import { AppLockPanel } from '@/components/app/AppLockPanel';
 import { isInGracePeriod } from '@/lib/grace';
+import { findTrackedApp } from '@/lib/lockHelpers';
 
 export default function AppDetailScreen() {
-  const { appId } = useLocalSearchParams<{ appId: string }>();
+  const { appId: appIdParam } = useLocalSearchParams<{ appId: string | string[] }>();
+  const rawId = Array.isArray(appIdParam) ? appIdParam.join('.') : appIdParam;
   const apps = useAppStore((s) => s.apps);
   const usage = useAppStore((s) => s.usage);
   const usageByDay = useAppStore((s) => s.usageByDay);
   const blockEvents = useAppStore((s) => s.blockEvents);
   const lock = useAppStore((s) => s.lock);
   const unlockExpiresAt = useAppStore((s) => s.unlockExpiresAt);
+  const graceAppId = useAppStore((s) => s.graceAppId);
+  const firstOpenDate = useAppStore((s) => s.firstOpenDate);
   const instantLockApp = useAppStore((s) => s.instantLockApp);
   const tryUpdateAppLimit = useAppStore((s) => s.tryUpdateAppLimit);
   const trySetAppLimitFromInput = useAppStore((s) => s.trySetAppLimitFromInput);
@@ -30,34 +35,34 @@ export default function AppDetailScreen() {
     null
   );
 
-  const app = apps.find((a) => a.id === appId);
-  const used = usage.find((u) => u.appId === appId)?.minutesUsed ?? 0;
+  const app = findTrackedApp(apps, rawId);
+  const used = usage.find((u) => u.appId === app?.id)?.minutesUsed ?? 0;
 
   const chart = useMemo(() => {
-    const days = lastNDays(7);
-    const values = days.map((d) => usageByDay[d]?.[appId ?? ''] ?? 0);
-    const labels = days.map((d) => formatDayLabel(d).slice(0, 3));
-    return { values, labels, max: Math.max(app?.dailyLimitMinutes ?? 60, ...values) };
-  }, [usageByDay, appId, app?.dailyLimitMinutes]);
+    const days = daysFromStart(firstOpenDate, 7);
+    return days.map((d) => ({
+      label: formatDayLabel(d).slice(0, 3),
+      used: usageByDay[d]?.[app?.id ?? ''] ?? 0,
+      limit: app?.dailyLimitMinutes ?? 0,
+      locked: locksOnDay(blockEvents, app?.id ?? '', d) > 0,
+    }));
+  }, [usageByDay, app?.id, app?.dailyLimitMinutes, firstOpenDate, blockEvents]);
 
   const blocks = useMemo(
-    () => blockEvents.filter((e) => e.appId === appId),
-    [blockEvents, appId]
+    () => blockEvents.filter((e) => e.appId === app?.id),
+    [blockEvents, app?.id]
   );
 
   if (!app) {
-    return (
-      <GradientBackground>
-        <SafeAreaView className="flex-1 px-4 pt-4 gap-4">
-          <ScreenBackButton />
-          <Text className="font-display text-[32px] text-scroll-text">App not found</Text>
-        </SafeAreaView>
-      </GradientBackground>
-    );
+    return <Redirect href="/(tabs)" />;
   }
 
-  const inGrace = isInGracePeriod(unlockExpiresAt);
-  const sessionLocked = lock.isLocked && lock.triggeredByAppId === app.id;
+  const inGrace =
+    isInGracePeriod(unlockExpiresAt) &&
+    (graceAppId === app.id || graceAppId === app.bundleId);
+  const sessionLocked =
+    lock.isLocked &&
+    (lock.triggeredByAppId === app.id || lock.triggeredByAppId === app.bundleId);
 
   const applyLimitResult = (
     result: { ok: boolean; needsConfirm?: boolean; reason?: string },
@@ -84,23 +89,32 @@ export default function AppDetailScreen() {
           <ScreenBackButton />
         </View>
         <ScrollView
-          contentContainerClassName={`px-4 pb-[${TAB_BAR_HEIGHT + 32}px]`}
+          contentContainerClassName="px-4 pb-[148px]"
           showsVerticalScrollIndicator={false}>
           <Text className="mt-2 font-display text-[32px] text-scroll-text">{app.name}</Text>
           <Text className="mb-6 font-body text-scroll-muted">
-            {used}m of {app.dailyLimitMinutes}m today · {app.category}
+            {used}m today · your limit is {app.dailyLimitMinutes}m
           </Text>
 
           {sessionLocked ? <AppLockPanel app={app} /> : null}
 
           <GlassCard className="mb-4">
-            <Text className="mb-4 font-display-semibold text-lg text-scroll-text">Last 7 days</Text>
-            <UsageBarChart
-              values={chart.values}
-              labels={chart.labels}
-              maxMinutes={chart.max}
-              barClassName={used >= app.dailyLimitMinutes ? 'bg-scroll-lock' : 'bg-scroll-accent'}
+            <Text className="mb-2 font-display-semibold text-lg text-scroll-text">Today</Text>
+            <TodaySplitBar used={used} limit={app.dailyLimitMinutes} />
+          </GlassCard>
+
+          <GlassCard className="mb-4">
+            <Text className="mb-1 font-display-semibold text-lg text-scroll-text">
+              {chart.length === 1 ? 'Today vs limit' : 'Used vs your limit'}
+            </Text>
+            <Text className="mb-3 font-body text-xs text-scroll-dim">
+              Blue is time in {app.name}. The faint bar is the limit you set. Dots are days it locked.
+            </Text>
+            <DualUsageChart
+              days={chart}
               highlightLast
+              usedLabel="Used"
+              limitLabel="Your limit"
             />
           </GlassCard>
 
@@ -111,9 +125,11 @@ export default function AppDetailScreen() {
             </GlassCard>
             <GlassCard className="flex-1 items-center py-4">
               <Text className="font-display text-2xl text-scroll-text">
-                {sessionLocked ? 'Yes' : inGrace ? 'Grace' : 'No'}
+                {sessionLocked ? 'Locked' : inGrace ? 'Open' : 'No'}
               </Text>
-              <Text className="mt-1 font-body text-xs text-scroll-dim">Locked now</Text>
+              <Text className="mt-1 font-body text-xs text-scroll-dim">
+                {inGrace ? 'Minutes remaining on home' : 'Status'}
+              </Text>
             </GlassCard>
           </View>
 
@@ -155,7 +171,9 @@ export default function AppDetailScreen() {
             )}
           </GlassCard>
 
-          <Button iconName="lock" label="Lock this app now" onPress={lockNow} />
+          {sessionLocked ? null : (
+            <Button iconName="lock" label="Lock this app now" onPress={lockNow} />
+          )}
         </ScrollView>
 
         {confirmApp ? (

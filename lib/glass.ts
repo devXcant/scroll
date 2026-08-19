@@ -12,7 +12,8 @@ export function getGlassModule(): { available: boolean; mod: GlassModule | null 
   }
   try {
     const mod = require('expo-glass-effect') as GlassModule;
-    const available = mod.isGlassEffectAPIAvailable?.() ?? false;
+    const available =
+      (mod.isGlassEffectAPIAvailable?.() ?? false) || (mod.isLiquidGlassAvailable?.() ?? false);
     cached = { available, mod };
     return cached;
   } catch {

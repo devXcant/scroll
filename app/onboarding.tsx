@@ -3,28 +3,26 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Text,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GradientBackground } from '@/components/ui/GradientBackground';
-import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { ShieldAppPicker } from '@/components/onboarding/ShieldAppPicker';
 import { OnboardingProgress } from '@/components/onboarding/OnboardingProgress';
 import { WelcomeHero } from '@/components/onboarding/WelcomeHero';
-import { CoachTopicsStep } from '@/components/onboarding/CoachTopicsStep';
+import { PlusTrialStep } from '@/components/onboarding/PlusTrialStep';
 import { AuthPanel } from '@/components/auth/AuthPanel';
-import { isNativeShieldAvailable, trackedAppsFromIosItems } from '@/services/nativeShield';
+import { trackedAppsFromIosItems } from '@/services/nativeShield';
 import { useAppStore } from '@/stores/appStore';
 import { sendCoachMessage } from '@/services/aiCoach';
 import { parseInterestsFromText } from '@/services/personalization';
 import { requestNotificationsPermission } from '@/services/notifications';
 import type { CoachMessage, TrackedApp } from '@/types';
 
-const ONBOARDING_STEPS = 3;
+const ONBOARDING_STEPS = 4;
 const INTRO_AUTO_MS = 3000;
 
 export default function OnboardingScreen() {
@@ -54,8 +52,7 @@ export default function OnboardingScreen() {
   useEffect(() => {
     if (stepIndex !== 0) return;
     const timer = setTimeout(() => {
-      if (signedInProfile) {
-        if (!onboardingComplete) completeOnboarding();
+      if (onboardingComplete) {
         router.replace('/(tabs)');
         return;
       }
@@ -68,7 +65,6 @@ export default function OnboardingScreen() {
     setOnboardingStep,
     signedInProfile,
     onboardingComplete,
-    completeOnboarding,
     router,
   ]);
 
@@ -112,6 +108,7 @@ export default function OnboardingScreen() {
     const reply = await sendCoachMessage([...interestMessages, userMsg], text, {
       mode: 'onboarding_interests',
       interests,
+      displayName: useAppStore.getState().userDisplayName || signedInProfile?.displayName,
     });
     setInterestMessages((m) => [...m, reply]);
     appendCoachMessage(interestSessionId, reply);
@@ -154,10 +151,15 @@ export default function OnboardingScreen() {
       return;
     }
 
-    if (!interestComplete) {
-      Alert.alert('One quick message', 'Tell Coach one topic so we can personalize your plan.');
+    if (stepIndex === 3) {
+      if (!interestComplete) {
+        Alert.alert('One quick message', 'Tell Coach one topic so we can personalize your plan.');
+        return;
+      }
+      setStepIndex(4);
       return;
     }
+
     const resolved = resolveTrackedApps();
     if (resolved.length > 0) setApps(resolved);
     completeOnboarding();
@@ -172,15 +174,14 @@ export default function OnboardingScreen() {
     setPermBusy(false);
   };
 
-  const footerLabel = stepIndex === 3 ? 'Start SCROLL' : 'Continue';
-  const footerDisabled =
-    stepIndex === 3 ? !interestComplete : stepIndex === 2 ? !hasAppSelection : stepIndex === 1 ? !signedInProfile : false;
+  const footerLabel = stepIndex === 4 ? 'Start 7-day Plus trial' : 'Continue';
+  const footerDisabled = stepIndex === 3 ? !interestComplete : stepIndex === 2 ? !hasAppSelection : false;
 
   return (
     <GradientBackground>
       <SafeAreaView className="flex-1 px-4">
         <View className="mt-4 flex-row items-center justify-end">
-          {stepIndex >= 1 && stepIndex <= 3 ? (
+          {stepIndex >= 1 && stepIndex <= 4 ? (
             <OnboardingProgress step={stepIndex} total={ONBOARDING_STEPS} className="w-40" />
           ) : (
             <View className="w-40" />
@@ -190,45 +191,38 @@ export default function OnboardingScreen() {
         {stepIndex === 0 ? <WelcomeHero /> : null}
 
         {stepIndex === 1 ? (
-          <ScrollView className="mt-6 flex-1 gap-6" showsVerticalScrollIndicator={false}>
+          <View className="mt-6 flex-1">
             <Text className="mb-1 font-display text-[28px] leading-9 text-scroll-text">
               Create your account
             </Text>
             <Text className="mb-4 font-body text-sm leading-5 text-scroll-muted">
-              Phone, Google, or Apple sign in is required to continue.
+              Display name, plus an email or phone number.
             </Text>
-            <AuthPanel />
-          </ScrollView>
+            <AuthPanel
+              onAuthenticated={() => {
+                setStepIndex(2);
+                setOnboardingStep('apps');
+              }}
+            />
+          </View>
         ) : null}
 
         {stepIndex === 2 ? (
-          <ScrollView className="mt-6 flex-1" showsVerticalScrollIndicator={false}>
+          <View className="mt-6 flex-1">
             <Text className="mb-2 font-display text-[28px] leading-9 text-scroll-text">
               Set up shields
             </Text>
-
-            <GlassCard className="mb-4">
-              <Text className="mb-2 font-display-semibold text-base text-scroll-accent">
-                {Platform.OS === 'ios' ? 'Screen Time' : 'Android permissions'}
-              </Text>
-              <Text className="mb-3 font-body text-sm leading-5 text-scroll-muted">
-                SCROLL needs permission to apply shields when you hit your limits.
-                {Platform.OS === 'ios' && !isNativeShieldAvailable()
-                  ? ' On the simulator, pick categories below; blocking works on a real device.'
-                  : ''}
-              </Text>
-              <Button
-                label="Grant blocking access"
-                variant="secondary"
-                loading={permBusy}
-                onPress={() => void grantPermissions()}
-              />
-            </GlassCard>
-
-            <View className="mb-6 min-h-[360px]">
+            <Button
+              label="Enable blocking"
+              variant="secondary"
+              loading={permBusy}
+              onPress={() => void grantPermissions()}
+              className="mb-4"
+            />
+            <View className="min-h-[360px] flex-1">
               <ShieldAppPicker selected={pickedApps} onChange={setPickedApps} />
             </View>
-          </ScrollView>
+          </View>
         ) : null}
 
         {stepIndex === 3 ? (
@@ -247,7 +241,9 @@ export default function OnboardingScreen() {
           </KeyboardAvoidingView>
         ) : null}
 
-        {stepIndex > 0 ? (
+        {stepIndex === 4 ? <PlusTrialStep /> : null}
+
+        {stepIndex > 1 ? (
           <View className="w-full pb-8 pt-2">
             <Button label={footerLabel} onPress={() => void next()} disabled={footerDisabled} />
           </View>

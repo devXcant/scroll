@@ -87,14 +87,14 @@ export function CoachTopicsStep({
               'mb-3 max-w-[92%] rounded-2xl px-4 py-3',
               item.role === 'user'
                 ? 'self-end bg-scroll-accent/20'
-                : 'self-start border border-scroll-border bg-scroll-card'
+                : 'self-start border border-white/20 bg-white/10'
             )}>
             <Text className="font-body leading-[22px] text-scroll-text">{item.content}</Text>
           </View>
         ))}
 
         {interestLoading ? (
-          <View className="mb-3 max-w-[88%] flex-row items-center gap-2 self-start rounded-2xl border border-scroll-border bg-scroll-card px-4 py-3">
+          <View className="mb-3 max-w-[88%] flex-row items-center gap-2 self-start rounded-2xl border border-white/20 bg-white/10 px-4 py-3">
             <ActivityIndicator color={colors.accent} size="small" />
             <Text className="font-body text-sm text-scroll-muted">Coach is thinking…</Text>
           </View>
@@ -112,7 +112,7 @@ export function CoachTopicsStep({
                     'rounded-full border px-3.5 py-2 active:opacity-80',
                     selected
                       ? 'border-scroll-accent bg-scroll-accent/20'
-                      : 'border-scroll-border bg-scroll-surface'
+                      : 'border-white/20 bg-white/10'
                   )}>
                   <Text
                     className={cn(
@@ -133,7 +133,7 @@ export function CoachTopicsStep({
           <TextInput
             multiline
             maxLength={280}
-            className="max-h-[120px] min-h-[52px] flex-1 rounded-2xl border border-scroll-border bg-scroll-surface px-4 py-3.5 font-body text-base text-scroll-text"
+            className="max-h-[120px] min-h-[52px] flex-1 rounded-2xl border border-white/20 bg-white/10 px-4 py-3.5 font-body text-base text-scroll-text"
             placeholder="Type your topics…"
             placeholderTextColor={colors.textDim}
             value={interestInput}

@@ -3,6 +3,7 @@ import type { TrackedApp } from '@/types';
 import { loadAppBlocker, type AppBlockerModule } from '@/lib/appBlocker';
 import { isIosSimulator } from '@/lib/runtime';
 import { openAndroidUsageAccessSettings } from '@/services/devicePermissions';
+import { startIosLimitMonitoring } from '@/services/usageSync';
 import {
   trackedAppsFromIosItems as buildTrackedAppsFromIosItems,
   type IosBlockedItemSnapshot,
@@ -75,22 +76,104 @@ export async function requestNativeShieldAuthorization(): Promise<boolean> {
 
   return new Promise((resolve) => {
     Alert.alert(
-      'Allow SCROLL to block apps',
-      'SCROLL needs Usage access and Display over other apps so it can stop Chrome and other tracked apps when you hit a limit.',
+      'Usage access',
+      'SCROLL needs Usage access to see how long you spend in the apps you track.',
       [
         {
           text: 'Usage access',
-          onPress: () => mod.openUsageStatsSettings(),
+          onPress: () => {
+            mod.openUsageStatsSettings();
+            Alert.alert(
+              'Display over other apps',
+              'SCROLL needs Display over other apps so it can cover a tracked app when its limit is hit.',
+              [
+                { text: 'Display over apps', onPress: () => mod.openOverlaySettings() },
+                {
+                  text: 'Done',
+                  onPress: async () => {
+                    const next = await mod.getPermissionStatus();
+                    resolve(next.allGranted);
+                  },
+                },
+              ]
+            );
+          },
         },
         {
-          text: 'Display over apps',
-          onPress: () => mod.openOverlaySettings(),
+          text: 'Done',
+          onPress: () => {
+            Alert.alert(
+              'Display over other apps',
+              'SCROLL needs Display over other apps so it can cover a tracked app when its limit is hit.',
+              [
+                { text: 'Display over apps', onPress: () => mod.openOverlaySettings() },
+                {
+                  text: 'Done',
+                  onPress: async () => {
+                    const next = await mod.getPermissionStatus();
+                    resolve(next.allGranted);
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  });
+}
+
+export async function requestUsageAccessPermission(): Promise<boolean> {
+  const mod = loadBlocker();
+  if (!mod || Platform.OS !== 'android') return false;
+  const status = await getAndroidBlockerStatus();
+  if (status?.usageStats) return true;
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Usage access',
+      'SCROLL needs Usage access to count time in the apps you track.',
+      [
+        {
+          text: 'Usage access',
+          onPress: () => {
+            mod.openUsageStatsSettings();
+            resolve(false);
+          },
         },
         {
           text: 'Done',
           onPress: async () => {
-            const next = await mod.getPermissionStatus();
-            resolve(next.allGranted);
+            const next = await getAndroidBlockerStatus();
+            resolve(Boolean(next?.usageStats));
+          },
+        },
+      ]
+    );
+  });
+}
+
+export async function requestOverlayPermission(): Promise<boolean> {
+  const mod = loadBlocker();
+  if (!mod || Platform.OS !== 'android') return false;
+  const status = await getAndroidBlockerStatus();
+  if (status?.overlay) return true;
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Display over other apps',
+      'SCROLL needs this so it can cover a tracked app when you hit its limit.',
+      [
+        {
+          text: 'Display access',
+          onPress: () => {
+            mod.openOverlaySettings();
+            resolve(false);
+          },
+        },
+        {
+          text: 'Done',
+          onPress: async () => {
+            const next = await getAndroidBlockerStatus();
+            resolve(Boolean(next?.overlay));
           },
         },
       ]
@@ -107,25 +190,30 @@ export async function ensureAndroidCanBlockOverlay(): Promise<boolean> {
 
   return new Promise((resolve) => {
     Alert.alert(
-      'SCROLL cannot block Chrome yet',
-      'Turn on Usage access and Display over other apps for SCROLL. Without overlay permission, limits only show inside SCROLL.',
+      'Usage access',
+      'Turn on Usage access so SCROLL can count time in your tracked apps.',
       [
         {
           text: 'Usage access',
           onPress: () => {
             openAndroidUsageAccessSettings();
-            resolve(false);
+            Alert.alert(
+              'Display over other apps',
+              'Turn this on so SCROLL can cover a tracked app when you hit its limit.',
+              [
+                {
+                  text: 'Display over apps',
+                  onPress: () => {
+                    loadBlocker()?.openOverlaySettings();
+                    resolve(false);
+                  },
+                },
+                { text: 'Done', onPress: () => resolve(false) },
+              ]
+            );
           },
         },
-        {
-          text: 'Display over apps',
-          onPress: () => {
-            const mod = loadBlocker();
-            mod?.openOverlaySettings();
-            resolve(false);
-          },
-        },
-        { text: 'Later', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Done', onPress: () => resolve(false) },
       ]
     );
   });
@@ -181,6 +269,10 @@ export async function syncNativeShieldWithScrollState(params: {
 }): Promise<void> {
   const mod = loadBlocker();
   if (!mod || isIosSimulator()) return;
+
+  if (Platform.OS === 'ios' && params.iosBlockedItems.length > 0) {
+    void startIosLimitMonitoring(params.apps, params.iosBlockedItems);
+  }
 
   const unlockActive =
     params.unlockExpiresAt != null && new Date(params.unlockExpiresAt) > new Date();
@@ -253,6 +345,10 @@ export async function syncNativeShieldWithScrollState(params: {
     }
   } else {
     mod.setBlockedApps([]);
+  }
+
+  if (Platform.OS === 'ios' && params.iosBlockedItems.length > 0) {
+    void startIosLimitMonitoring(params.apps, params.iosBlockedItems);
   }
 }
 

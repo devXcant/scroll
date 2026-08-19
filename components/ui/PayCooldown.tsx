@@ -22,7 +22,7 @@ export function PayCooldown({ appId }: { appId?: string }) {
   if (left <= 0) return null;
 
   return (
-    <View className="mb-4 items-center rounded-scroll-md border border-scroll-border bg-scroll-surface p-4">
+    <View className="mb-4 items-center rounded-scroll-md border border-white/20 bg-white/10 p-4">
       <Text className="font-body text-xs text-scroll-dim">Next pay unlock in</Text>
       <Text className="mt-1 font-display text-[40px] text-scroll-lock">{formatMs(left)}</Text>
     </View>

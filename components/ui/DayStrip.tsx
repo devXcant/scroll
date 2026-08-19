@@ -34,7 +34,7 @@ export function DayStrip({ days, selected, onSelect }: Props) {
               'rounded-full border px-3.5 py-2.5',
               active
                 ? 'border-scroll-accent bg-scroll-accent/15'
-                : 'border-scroll-border bg-scroll-surface'
+                : 'border-white/15 bg-white/10'
             )}>
             <Text
               className={cn(

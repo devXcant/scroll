@@ -42,7 +42,7 @@ export const DEFAULT_CATEGORY_LIMITS: CategoryLimit[] = [
   { category: 'social', label: 'Social media', dailyLimitMinutes: 120 },
   { category: 'entertainment', label: 'Entertainment', dailyLimitMinutes: 180 },
   { category: 'games', label: 'Games', dailyLimitMinutes: 60 },
-  { category: 'other', label: 'Other (Messages, Photos, etc.)', dailyLimitMinutes: 120 },
+  { category: 'other', label: 'Others', dailyLimitMinutes: 120 },
 ];
 
 export const INVESTMENT_ALLOCATION = {
@@ -126,18 +126,24 @@ export const LEARN_MODULES: LearnModule[] = [
   {
     id: 'sports-recovery',
     topic: 'sports',
-    title: 'Recovery beats another scroll session',
-    durationMinutes: 4,
+    title: 'Train like the feed is not your coach',
+    durationMinutes: 5,
     slides: [
       {
         id: '1',
-        title: 'Parasympathetic rest',
-        body: 'Athletes grow in recovery. Your brain also consolidates memory offline, not on TikTok.',
+        title: 'Highlights are not training',
+        body: 'A 12 second clip cannot replace sleep, film study with a notebook, or the session you already did. The feed is a highlight reel of other people. Your gains happen off camera.',
+        fact: 'Reaction time and decision speed drop after a short night. That is the first thing scrolling steals.',
       },
       {
         id: '2',
-        title: 'Micro-mobility',
-        body: 'Two minutes of mobility beats twenty minutes of thumb exercise.',
+        title: 'One clip, one note',
+        body: 'If you open highlights, watch twice, write one thing you would do differently, then close the app. That is study. Infinite replay is just another scroll.',
+      },
+      {
+        id: '3',
+        title: 'Protect the night',
+        body: 'The night before a match is a performance tool. Late screens delay sleep. Delayed sleep costs the first step, the last sprint, and how you read the play.',
       },
     ],
   },

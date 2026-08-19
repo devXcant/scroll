@@ -10,7 +10,12 @@ type Props = {
   onAuthenticated?: () => void;
 };
 
-export function GoogleSignInButton({ loading, setLoading, onAuthenticated }: Props) {
+export function GoogleSignInButton(props: Props) {
+  if (!isGoogleAuthConfigured()) return null;
+  return <GoogleSignInButtonReady {...props} />;
+}
+
+function GoogleSignInButtonReady({ loading, setLoading, onAuthenticated }: Props) {
   const completeGoogleSignIn = useAppStore((s) => s.completeGoogleSignIn);
   const [request, response, promptAsync] = useGoogleAuthRequest();
 
@@ -47,9 +52,8 @@ export function GoogleSignInButton({ loading, setLoading, onAuthenticated }: Pro
       );
       return;
     }
-    setLoading(true);
-    await promptAsync();
-    setLoading(false);
+    const result = await promptAsync();
+    if (result.type !== 'success') setLoading(false);
   };
 
   const busy = loading && !!request;

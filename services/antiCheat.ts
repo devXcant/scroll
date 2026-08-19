@@ -13,22 +13,32 @@ type UnlockAttempt = {
 };
 
 const attempts: UnlockAttempt[] = [];
+let hydratePromise: Promise<void> | null = null;
 
-// Escalation/cooldown must survive app restarts, otherwise force-quitting resets
-// the anti-cheat tiers. Hydrate the in-memory cache from AsyncStorage on load.
-void (async () => {
-  const raw = await AsyncStorage.getItem(ATTEMPTS_KEY);
-  if (!raw) return;
-  try {
-    const parsed = JSON.parse(raw) as UnlockAttempt[];
-    const cutoff = Date.now() - DAY_MS;
-    if (Array.isArray(parsed)) {
-      attempts.push(...parsed.filter((a) => a && a.at >= cutoff));
-    }
-  } catch {
-    /* ignore corrupt cache */
+function hydrateAttempts(): Promise<void> {
+  if (!hydratePromise) {
+    hydratePromise = (async () => {
+      const raw = await AsyncStorage.getItem(ATTEMPTS_KEY);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as UnlockAttempt[];
+        const cutoff = Date.now() - DAY_MS;
+        if (Array.isArray(parsed)) {
+          attempts.push(...parsed.filter((a) => a && a.at >= cutoff));
+        }
+      } catch {
+        /* ignore corrupt cache */
+      }
+    })();
   }
-})();
+  return hydratePromise;
+}
+
+void hydrateAttempts();
+
+export async function ensureUnlockAttemptsHydrated(): Promise<void> {
+  await hydrateAttempts();
+}
 
 function persistAttempts(): void {
   void AsyncStorage.setItem(ATTEMPTS_KEY, JSON.stringify(attempts));

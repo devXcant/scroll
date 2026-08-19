@@ -97,8 +97,8 @@ export function AppPicker({ selected, onChange }: Props) {
     <View className="flex-1">
       <Text className="mb-4 font-body text-sm leading-5 text-scroll-muted">
         {Platform.OS === 'android'
-          ? 'Apps installed on this phone. Search or scroll to pick what SCROLL should block when you hit a limit.'
-          : 'Select the apps you want SCROLL to monitor. System apps like Phone and Settings are hidden.'}
+          ? 'Search and tap the apps you want limited.'
+          : 'Select the apps you want SCROLL to monitor.'}
       </Text>
       <TextInput
         className="mb-2 rounded-scroll-md border border-scroll-border bg-scroll-card px-4 py-3 font-body text-scroll-text"
@@ -122,13 +122,11 @@ export function AppPicker({ selected, onChange }: Props) {
           data={results}
           keyExtractor={(item) => item.id}
           className="flex-1"
-          nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
           contentContainerClassName="pb-8"
           ListEmptyComponent={
             <Text className="mt-6 font-body text-sm leading-5 text-scroll-dim">
-              No apps found. Tap Refresh list. If still empty, allow Usage access for SCROLL in
-              Android settings.
+              No apps found. Tap Refresh list after allowing Usage access.
             </Text>
           }
           renderItem={({ item }) => {

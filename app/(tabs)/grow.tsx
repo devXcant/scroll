@@ -6,7 +6,6 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { ScrollIcon } from '@/components/ui/ScrollIcon';
 import { Button } from '@/components/ui/Button';
 import { colors } from '@/constants/theme';
-import { TAB_BAR_HEIGHT } from '@/constants/layout';
 import { useAppStore } from '@/stores/appStore';
 import { formatCents } from '@/services/payments';
 import { INVESTMENT_ALLOCATION } from '@/constants/defaults';
@@ -46,7 +45,7 @@ export default function GrowScreen() {
     <GradientBackground variant="success">
       <SafeAreaView className="flex-1" edges={['top']}>
         <ScrollView
-          contentContainerClassName={`px-6 pt-4 pb-[${TAB_BAR_HEIGHT + 64}px]`}
+          contentContainerClassName="px-6 pt-4 pb-[152px]"
           showsVerticalScrollIndicator={false}>
           <Text className="font-display text-[32px] text-scroll-text">Grow</Text>
           <Text className="mb-6 font-body leading-[22px] text-scroll-muted">
